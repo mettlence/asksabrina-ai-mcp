@@ -9,7 +9,7 @@ class IntentDetector:
         "customer_value": ["clv", "lifetime value", "top customer", "best customer", "high value", "most valuable"],
         "repeat_customers": ["loyal", "repeat", "returning customer", "retention", "come back"],
         
-        # Payment Time Analytics (NEW)
+        # Payment Time Analytics
         "payment_time": [
             "payment time", "time to pay", "how long to pay", "payment duration", 
             "order to payment", "time between order", "average payment", "how fast pay"
@@ -33,17 +33,24 @@ class IntentDetector:
         "emotion_conversion": ["emotion conversion", "which emotion convert", "emotional impact", "emotion payment"],
         "high_risk": ["risk", "distress", "negative", "support", "worried customer", "need help"],
         
-        # Revenue Analytics
+        # Revenue Analytics - ENHANCED
         "payment_rate": ["payment rate", "success rate", "conversion", "completion rate", "how many paid"],
-        "revenue_trends": ["revenue trend", "sales over time", "daily revenue", "monthly revenue", "revenue growth"],
+        "revenue_trends": [
+            "revenue trend", "sales over time", "daily revenue", "monthly revenue", "revenue growth",
+            "all revenue", "total revenue", "total sales", "how much money", "total income",
+            "revenue this", "revenue last", "sales this", "sales last", "money made"
+        ],
         "product_performance": ["product performance", "best product", "top selling", "product revenue", "best seller"],
         
         # Customer Needs Analytics
         "customer_needs": ["need", "looking for", "customer want", "seeking", "what do they need"],
         "unmet_needs": ["gap", "unmet need", "unfulfilled", "missing service", "not satisfied"],
         
-        # Sentiment Analytics
-        "sentiment_overview": ["overall sentiment", "customer satisfaction", "positive negative", "happy sad"],
+        # Sentiment Analytics - ENHANCED
+        "sentiment_overview": [
+            "overall sentiment", "customer satisfaction", "positive negative", "happy sad",
+            "are customers happy", "customer feedback", "satisfaction score"
+        ],
         "sentiment_product": ["sentiment by product", "product sentiment", "which product happy"],
         "keywords": ["keyword", "common word", "popular term", "frequently mentioned", "top word"]
     }
@@ -83,6 +90,7 @@ class IntentDetector:
     def extract_parameters(self, question: str) -> Dict:
         """Extract parameters like time period, limits, thresholds from question"""
         import re
+        from datetime import datetime
         params = {}
         question_lower = question.lower()
         
@@ -109,24 +117,31 @@ class IntentDetector:
             unit = match.group(2)
             params["period_days"] = number * time_unit_multipliers.get(unit, 1)
         else:
+            # Special handling for "this year" - calculate days from Jan 1 to now
+            if "this year" in question_lower:
+                start_of_year = datetime(datetime.utcnow().year, 1, 1)
+                days_since_start = (datetime.utcnow() - start_of_year).days + 1
+                params["period_days"] = days_since_start
+            # Handle "last year" or "1 year"
+            elif any(phrase in question_lower for phrase in ["last year", "past year", "in 1 year"]):
+                params["period_days"] = 365
             # Fallback to static patterns
-            time_patterns = {
-                "today": 1,
-                "yesterday": 1,
-                "this week": 7,
-                "last week": 7,
-                "this month": 30,
-                "last month": 30,
-                "last quarter": 90,
-                "this quarter": 90,
-                "this year": 365,
-                "last year": 365
-            }
-            
-            for pattern, days in time_patterns.items():
-                if pattern in question_lower:
-                    params["period_days"] = days
-                    break
+            else:
+                time_patterns = {
+                    "today": 1,
+                    "yesterday": 1,
+                    "this week": 7,
+                    "last week": 7,
+                    "this month": 30,
+                    "last month": 30,
+                    "last quarter": 90,
+                    "this quarter": 90
+                }
+                
+                for pattern, days in time_patterns.items():
+                    if pattern in question_lower:
+                        params["period_days"] = days
+                        break
         
         # Extract limits (top N, show N, first N)
         limit_pattern = r'(?:top|first|best|show|give\s+me)\s+(\d+)'
@@ -135,17 +150,39 @@ class IntentDetector:
         if limit_match:
             params["limit"] = int(limit_match.group(1))
         
-        # Extract hour thresholds for abandoned carts or payment speed
-        hour_pattern = r'(\d+)\s+(?:hour|hours|hrs?)'
+        # Extract time thresholds - support hours, minutes, seconds
+        # Hours pattern
+        hour_pattern = r'(\d+)\s+(?:hour|hours|hrs?)\s+threshold'
         hour_match = re.search(hour_pattern, question_lower)
+        
+        # Minutes pattern
+        minute_pattern = r'(\d+)\s+(?:minute|minutes|mins?)\s+threshold'
+        minute_match = re.search(minute_pattern, question_lower)
+        
+        # Seconds pattern  
+        second_pattern = r'(\d+)\s+(?:second|seconds|secs?)\s+threshold'
+        second_match = re.search(second_pattern, question_lower)
         
         if hour_match:
             hours = int(hour_match.group(1))
-            # Determine context
             if any(word in question_lower for word in ["abandon", "unpaid", "waiting"]):
                 params["hours_threshold"] = hours
-            elif any(word in question_lower for word in ["fast", "slow", "quick", "speed"]):
+            elif any(word in question_lower for word in ["fast", "slow", "quick", "speed", "payer"]):
                 params["threshold_hours"] = hours
+        elif minute_match:
+            minutes = int(minute_match.group(1))
+            hours_equivalent = minutes / 60
+            if any(word in question_lower for word in ["abandon", "unpaid", "waiting"]):
+                params["hours_threshold"] = hours_equivalent
+            elif any(word in question_lower for word in ["fast", "slow", "quick", "speed", "payer"]):
+                params["threshold_hours"] = hours_equivalent
+        elif second_match:
+            seconds = int(second_match.group(1))
+            hours_equivalent = seconds / 3600
+            if any(word in question_lower for word in ["abandon", "unpaid", "waiting"]):
+                params["hours_threshold"] = hours_equivalent
+            elif any(word in question_lower for word in ["fast", "slow", "quick", "speed", "payer"]):
+                params["threshold_hours"] = hours_equivalent
         
         return params
     

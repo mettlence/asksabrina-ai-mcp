@@ -86,32 +86,42 @@ def get_payment_time_analysis(period_days=30):
         {"$match": {
             "created_at": {"$gte": since},
             "payment_status": 1,
-            "payment_date": {"$exists": True}
+            "payment_date": {"$exists": True, "$ne": None, "$type": "date"}
+        }},
+        {"$addFields": {
+            "payment_duration_ms": {
+                "$subtract": ["$payment_date", "$created_at"]
+            }
+        }},
+        # Filter out negative durations (data quality issue)
+        {"$match": {
+            "payment_duration_ms": {"$gte": 0}
         }},
         {"$addFields": {
             "payment_duration_hours": {
-                "$divide": [
-                    {"$subtract": ["$payment_date", "$created_at"]},
-                    3600000  # Convert milliseconds to hours
-                ]
+                "$divide": ["$payment_duration_ms", 3600000]  # Convert milliseconds to hours
+            },
+            "payment_duration_minutes": {
+                "$divide": ["$payment_duration_ms", 60000]  # Convert milliseconds to minutes
             }
         }},
         {"$group": {
             "_id": None,
             "avg_payment_time_hours": {"$avg": "$payment_duration_hours"},
+            "avg_payment_time_minutes": {"$avg": "$payment_duration_minutes"},
             "min_payment_time_hours": {"$min": "$payment_duration_hours"},
             "max_payment_time_hours": {"$max": "$payment_duration_hours"},
             "total_paid_orders": {"$sum": 1},
-            "durations": {"$push": "$payment_duration_hours"}
+            "durations_hours": {"$push": "$payment_duration_hours"}
         }}
     ]
     results = list(ai_insight.aggregate(pipeline))
     
-    if not results:
-        return {"message": "No paid orders found in this period"}
+    if not results or results[0].get("total_paid_orders", 0) == 0:
+        return {"message": "No paid orders with valid payment dates found in this period"}
     
     data = results[0]
-    durations = sorted(data.get("durations", []))
+    durations = sorted([d for d in data.get("durations_hours", []) if d >= 0])
     
     # Calculate median
     median = 0
@@ -119,8 +129,13 @@ def get_payment_time_analysis(period_days=30):
         mid = len(durations) // 2
         median = durations[mid] if len(durations) % 2 != 0 else (durations[mid-1] + durations[mid]) / 2
     
+    avg_hours = data.get("avg_payment_time_hours", 0)
+    avg_minutes = data.get("avg_payment_time_minutes", 0)
+    
     return {
-        "avg_payment_time_hours": round(data.get("avg_payment_time_hours", 0), 2),
+        "avg_payment_time_hours": round(avg_hours, 2),
+        "avg_payment_time_minutes": round(avg_minutes, 2),
+        "avg_payment_time_readable": f"{int(avg_hours)}h {int((avg_hours % 1) * 60)}m",
         "median_payment_time_hours": round(median, 2),
         "min_payment_time_hours": round(data.get("min_payment_time_hours", 0), 2),
         "max_payment_time_hours": round(data.get("max_payment_time_hours", 0), 2),
@@ -131,18 +146,38 @@ def get_payment_time_analysis(period_days=30):
 def get_fast_vs_slow_payers(period_days=30, threshold_hours=24):
     """Segment customers by payment speed"""
     since = datetime.utcnow() - timedelta(days=period_days)
+    
+    # First, let's check how many total paid orders we have
+    total_paid = ai_insight.count_documents({
+        "created_at": {"$gte": since},
+        "payment_status": 1
+    })
+    
+    # Count orders with valid payment_date
+    valid_payment_date = ai_insight.count_documents({
+        "created_at": {"$gte": since},
+        "payment_status": 1,
+        "payment_date": {"$exists": True, "$ne": None, "$type": "date"}
+    })
+    
     pipeline = [
         {"$match": {
             "created_at": {"$gte": since},
             "payment_status": 1,
-            "payment_date": {"$exists": True}
+            "payment_date": {"$exists": True, "$ne": None, "$type": "date"}
+        }},
+        {"$addFields": {
+            "payment_duration_ms": {
+                "$subtract": ["$payment_date", "$created_at"]
+            }
+        }},
+        # Filter out negative or invalid durations
+        {"$match": {
+            "payment_duration_ms": {"$gte": 0}
         }},
         {"$addFields": {
             "payment_duration_hours": {
-                "$divide": [
-                    {"$subtract": ["$payment_date", "$created_at"]},
-                    3600000
-                ]
+                "$divide": ["$payment_duration_ms", 3600000]
             }
         }},
         {"$group": {
@@ -154,11 +189,63 @@ def get_fast_vs_slow_payers(period_days=30, threshold_hours=24):
                 ]
             },
             "count": {"$sum": 1},
-            "avg_payment_time": {"$avg": "$payment_duration_hours"},
+            "avg_payment_time_hours": {"$avg": "$payment_duration_hours"},
+            "min_payment_time_hours": {"$min": "$payment_duration_hours"},
+            "max_payment_time_hours": {"$max": "$payment_duration_hours"},
             "total_revenue": {"$sum": "$total_price"}
-        }}
+        }},
+        {"$sort": {"_id": 1}}
     ]
-    return list(ai_insight.aggregate(pipeline))
+    results = list(ai_insight.aggregate(pipeline))
+    
+    # Initialize both segments
+    summary = {
+        "fast_payers": {
+            "count": 0,
+            "avg_payment_time_hours": 0,
+            "min_payment_time_hours": 0,
+            "max_payment_time_hours": 0,
+            "avg_payment_time_readable": "0h 0m",
+            "total_revenue": 0
+        },
+        "slow_payers": {
+            "count": 0,
+            "avg_payment_time_hours": 0,
+            "min_payment_time_hours": 0,
+            "max_payment_time_hours": 0,
+            "avg_payment_time_readable": "0h 0m",
+            "total_revenue": 0
+        }
+    }
+    
+    # Fill in actual data
+    for r in results:
+        segment = r["_id"]
+        avg_hours = r.get("avg_payment_time_hours", 0)
+        min_hours = r.get("min_payment_time_hours", 0)
+        max_hours = r.get("max_payment_time_hours", 0)
+        
+        summary[segment] = {
+            "count": r["count"],
+            "avg_payment_time_hours": round(avg_hours, 2),
+            "min_payment_time_hours": round(min_hours, 2),
+            "max_payment_time_hours": round(max_hours, 2),
+            "avg_payment_time_readable": f"{int(avg_hours)}h {int((avg_hours % 1) * 60)}m",
+            "total_revenue": r["total_revenue"]
+        }
+    
+    analyzed_count = summary["fast_payers"]["count"] + summary["slow_payers"]["count"]
+    
+    return {
+        "period_days": period_days,
+        "threshold_hours": threshold_hours,
+        "threshold_readable": f"{int(threshold_hours)}h {int((threshold_hours % 1) * 60)}m" if threshold_hours >= 1 else f"{int(threshold_hours * 60)}m",
+        "total_paid_orders_in_period": total_paid,
+        "orders_with_valid_payment_date": valid_payment_date,
+        "orders_analyzed": analyzed_count,
+        "fast_payers": summary["fast_payers"],
+        "slow_payers": summary["slow_payers"]
+    }
 
 
 def get_abandoned_carts(hours_threshold=48):
