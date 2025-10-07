@@ -2,6 +2,10 @@
 .env.*
 *.log
 
+# MongoDB
+dumb/*
+scripts/*
+
 # Python
 __pycache__/
 *.py[cod]
