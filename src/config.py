@@ -4,8 +4,8 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     PORT: int = 8000
 
-    MONGO_URI: str
-    MONGO_DB: str = "asksabrina"
+    MONGODB_URI: str
+    DB_NAME: str = "development"
 
     OPENAI_API_KEY: str
     EMBEDDING_MODEL: str = "text-embedding-3-small"

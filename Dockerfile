@@ -1,27 +1,32 @@
-# --------------------------------------------
-# 🐍 FastAPI MCP Backend - Production Dockerfile
-# --------------------------------------------
+FROM python:3.11-slim
 
-# 1️⃣ Use a slim Python base image
-FROM python:3.10-slim
-
-# 2️⃣ Set working directory inside container
+# Set working directory
 WORKDIR /app
 
-# 3️⃣ Copy only requirements first (for faster builds)
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first (for layer caching)
 COPY requirements.txt .
 
-# 4️⃣ Install system packages & Python dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && pip install --no-cache-dir -r requirements.txt \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 5️⃣ Copy the rest of the backend code
+# Copy application code
 COPY . .
 
-# 6️⃣ Expose port for FastAPI (default 8000)
+# Create non-root user for security
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Expose port
 EXPOSE 8000
 
-# 7️⃣ Run the app with uvicorn
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8000/health')"
+
+# Run the application
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
