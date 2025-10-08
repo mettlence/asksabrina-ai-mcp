@@ -325,8 +325,6 @@ fi
 echo -e "${YELLOW}🏥 Testing health endpoint...${NC}"
 if curl -f -k https://localhost/health > /dev/null 2>&1; then
     echo -e "${GREEN}✅ HTTPS health check passed${NC}"
-elif curl -f http://localhost/health > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ HTTP health check passed${NC}"
 else
     echo -e "${YELLOW}⚠️  Health check timeout (app may still be starting)${NC}"
 fi
