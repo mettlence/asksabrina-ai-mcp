@@ -175,7 +175,6 @@ EOF
         --non-interactive \
         --force-renewal \
         --verbose \
-        --staging \
         2>&1 | tee /tmp/certbot_output.log
     
     CERT_STATUS=${PIPESTATUS[0]}
