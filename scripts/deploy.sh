@@ -98,6 +98,30 @@ EOF
     sleep 10
     docker-compose -f $COMPOSE_FILE up -d nginx
     sleep 5
+
+    # Prove the ACME challenge path is reachable from the Internet before certbot
+    echo -e "${YELLOW}🧪 Probing ACME challenge path...${NC}"
+    TOKEN=$(head -c16 /dev/urandom | xxd -p)
+    mkdir -p "$CERTBOT_DIR/www/.well-known/acme-challenge"
+    echo "ok-$TOKEN" > "$CERTBOT_DIR/www/.well-known/acme-challenge/$TOKEN"
+
+    # Wait up to ~60s for nginx to serve it
+    ACME_OK=0
+    for i in {1..30}; do
+    if curl -s "http://$DOMAIN/.well-known/acme-challenge/$TOKEN" | grep -q "ok-$TOKEN"; then
+        ACME_OK=1; break
+    fi
+    sleep 2
+    done
+
+    if [ $ACME_OK -ne 1 ]; then
+    echo -e "${RED}❌ ACME path not reachable at http://$DOMAIN/.well-known/acme-challenge/$TOKEN${NC}"
+    echo -e "${YELLOW}💡 Check: ports mapping (80:80), EC2 security group, DNS A/AAAA, nginx volume mounts${NC}"
+    docker compose -f $COMPOSE_FILE logs --tail=100 nginx
+    exit 1
+    fi
+    echo -e "${GREEN}✅ ACME path reachable. Proceeding to request certificate.${NC}"
+
     
     # Request certificate
     echo -e "${YELLOW}📜 Requesting Let's Encrypt certificate...${NC}"
