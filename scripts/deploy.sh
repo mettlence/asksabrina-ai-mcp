@@ -17,7 +17,7 @@ BACKUP_DIR="$APP_DIR/backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 CERTBOT_DIR="$APP_DIR/certbot"
 DOMAIN="mcp.asksabrina.com"
-EMAIL="admin@asksabrina.com"  # Change this to your email
+EMAIL="admin@asksabrina.com"
 
 # Change to app directory
 cd $APP_DIR
@@ -123,7 +123,7 @@ EOF
     fi
     echo -e "${GREEN}✅ DNS resolves to: $DNS_IP${NC}"
 
-    # Prove the ACME challenge path is reachable from the Internet before certbot
+    # Prove the ACME challenge path is reachable
     echo -e "${YELLOW}🧪 Probing ACME challenge path...${NC}"
     TOKEN=$(head -c16 /dev/urandom | xxd -p)
     mkdir -p "$CERTBOT_DIR/www/.well-known/acme-challenge"
@@ -164,7 +164,7 @@ EOF
     echo -e "${BLUE}   Email: $EMAIL${NC}"
     
     # Run certbot with verbose output
-    set +e  # Don't exit on error, we want to handle it
+    set +e
     docker-compose -f $COMPOSE_FILE run --rm certbot certonly \
         --webroot \
         --webroot-path /var/www/certbot \
@@ -178,30 +178,56 @@ EOF
         2>&1 | tee /tmp/certbot_output.log
     
     CERT_STATUS=${PIPESTATUS[0]}
-    set -e  # Re-enable exit on error
+    set -e
     
     if [ $CERT_STATUS -eq 0 ]; then
-        # Wait a moment for file system sync
-        sleep 2
+        # Wait for file system sync
+        echo -e "${YELLOW}⏳ Waiting for certificate files to sync...${NC}"
+        sleep 5
         
-        # Verify certificate was actually created (check multiple possible paths)
-        CERT_PATH="$APP_DIR/certbot/conf/live/$DOMAIN/fullchain.pem"
+        # Verify certificate was created
+        CERT_PATH="$CERTBOT_DIR/conf/live/$DOMAIN/fullchain.pem"
         
-        if [ ! -f "$CERT_PATH" ]; then
-            echo -e "${YELLOW}⚠️  Certificate not found at expected path: $CERT_PATH${NC}"
+        echo -e "${YELLOW}🔍 Verifying certificate files...${NC}"
+        
+        # Wait up to 30 seconds for certificate files
+        CERT_FOUND=0
+        for i in {1..15}; do
+            if [ -f "$CERT_PATH" ]; then
+                CERT_FOUND=1
+                break
+            fi
+            echo -e "${YELLOW}  Waiting for certificate files... (attempt $i/15)${NC}"
+            sleep 2
+        done
+        
+        if [ $CERT_FOUND -eq 0 ]; then
+            echo -e "${YELLOW}⚠️  Certificate not found at: $CERT_PATH${NC}"
             echo -e "${YELLOW}🔍 Checking alternative locations...${NC}"
             
-            # Check inside container
-            docker-compose -f $COMPOSE_FILE run --rm certbot ls -la /etc/letsencrypt/live/ || true
+            # Check inside container properly
+            echo -e "${YELLOW}📂 Inside certbot container:${NC}"
+            docker-compose -f $COMPOSE_FILE run --rm --entrypoint /bin/sh certbot -c "ls -la /etc/letsencrypt/live/ 2>/dev/null || echo 'Directory not found'"
             
             # Check host filesystem
             echo -e "${YELLOW}📂 Host filesystem:${NC}"
-            ls -la "$APP_DIR/certbot/conf/live/" 2>/dev/null || echo "Directory not found"
+            ls -la "$CERTBOT_DIR/conf/" 2>/dev/null || echo "Conf directory not found"
+            ls -la "$CERTBOT_DIR/conf/live/" 2>/dev/null || echo "Live directory not found"
+            
+            # Check if using named volumes
+            echo -e "${YELLOW}📂 Docker volumes:${NC}"
+            docker volume ls | grep certbot || echo "No certbot volumes"
             
             echo -e "${RED}❌ Certificate file not accessible on host${NC}"
-            echo -e "${YELLOW}💡 This is a volume mount issue. Try:${NC}"
-            echo -e "   1. sudo chown -R \$USER:\$USER $APP_DIR/certbot"
-            echo -e "   2. docker-compose down && docker-compose up -d"
+            echo -e "${YELLOW}💡 Possible solutions:${NC}"
+            echo -e "   1. Fix permissions: sudo chown -R \$USER:\$USER $CERTBOT_DIR"
+            echo -e "   2. Check docker-compose.yml volume mounts"
+            echo -e "   3. Verify certbot volume configuration"
+            
+            # Restore config and exit
+            if [ -f "$APP_DIR/nginx/nginx.conf.backup" ]; then
+                mv "$APP_DIR/nginx/nginx.conf.backup" "$APP_DIR/nginx/nginx.conf"
+            fi
             exit 1
         fi
         
@@ -209,8 +235,10 @@ EOF
         
         # Verify certificate validity
         echo -e "${YELLOW}🔍 Verifying certificate...${NC}"
-        CERT_DOMAIN=$(openssl x509 -noout -subject -in "$CERTBOT_DIR/conf/live/$DOMAIN/fullchain.pem" | sed -n 's/.*CN=\([^,]*\).*/\1/p')
+        CERT_DOMAIN=$(openssl x509 -noout -subject -in "$CERT_PATH" | sed -n 's/.*CN=\([^,]*\).*/\1/p')
+        EXPIRY=$(openssl x509 -enddate -noout -in "$CERT_PATH" | cut -d= -f2)
         echo -e "${GREEN}✅ Certificate issued for: $CERT_DOMAIN${NC}"
+        echo -e "${GREEN}✅ Certificate expires: $EXPIRY${NC}"
         
         # Restore original HTTPS config
         if [ -f "$APP_DIR/nginx/nginx.conf.backup" ]; then
@@ -230,21 +258,13 @@ EOF
         echo -e "\n${RED}Certbot Error Output:${NC}"
         cat /tmp/certbot_output.log
         
-        echo -e "\n${YELLOW}💡 Common issues and fixes:${NC}"
-        echo -e "   ${BLUE}Rate Limit:${NC} If you see 'too many certificates', wait 1 hour or use --staging flag"
-        echo -e "   ${BLUE}DNS Issue:${NC} Ensure $DOMAIN points to this server's IP"
-        echo -e "   ${BLUE}Port 80 Blocked:${NC} Check firewall/security group allows port 80"
-        echo -e "   ${BLUE}CAA Records:${NC} Check DNS CAA records allow Let's Encrypt"
+        echo -e "\n${YELLOW}💡 Common issues:${NC}"
+        echo -e "   ${BLUE}Rate Limit:${NC} Wait 1 hour or use --staging"
+        echo -e "   ${BLUE}DNS Issue:${NC} $DOMAIN must point to this server"
+        echo -e "   ${BLUE}Port 80:${NC} Must be open in security group"
+        echo -e "   ${BLUE}CAA Records:${NC} Check DNS CAA allows Let's Encrypt"
         
-        echo -e "\n${YELLOW}📋 Additional diagnostics:${NC}"
-        echo -e "   DNS Resolution: $(dig +short $DOMAIN)"
-        echo -e "   Port 80 Status: $(sudo netstat -tlnp | grep :80 || echo 'Not listening')"
-        echo -e "   Certbot Logs: /tmp/certbot_output.log"
-        
-        echo -e "\n${YELLOW}🔧 To retry with Let's Encrypt staging (no rate limits):${NC}"
-        echo -e "   Add --staging flag to certbot command in the script"
-        
-        # Restore original config on failure
+        # Restore config
         if [ -f "$APP_DIR/nginx/nginx.conf.backup" ]; then
             mv "$APP_DIR/nginx/nginx.conf.backup" "$APP_DIR/nginx/nginx.conf"
             docker-compose -f $COMPOSE_FILE restart nginx
@@ -282,7 +302,7 @@ docker-compose -f $COMPOSE_FILE down
 echo -e "${YELLOW}🚀 Starting new containers...${NC}"
 docker-compose -f $COMPOSE_FILE up -d
 
-# Wait for services to be healthy
+# Wait for services
 echo -e "${YELLOW}⏳ Waiting for services to be healthy...${NC}"
 sleep 45
 
@@ -296,22 +316,22 @@ else
     exit 1
 fi
 
-# Test health endpoint (try both HTTP and HTTPS)
+# Test health endpoint
 echo -e "${YELLOW}🏥 Testing health endpoint...${NC}"
 if curl -f -k https://localhost/health > /dev/null 2>&1; then
     echo -e "${GREEN}✅ HTTPS health check passed${NC}"
 elif curl -f http://localhost/health > /dev/null 2>&1; then
     echo -e "${GREEN}✅ HTTP health check passed${NC}"
 else
-    echo -e "${YELLOW}⚠️  Health check timeout (this is normal if app is still starting)${NC}"
+    echo -e "${YELLOW}⚠️  Health check timeout (app may still be starting)${NC}"
 fi
 
-# Cleanup old images
+# Cleanup
 echo -e "${YELLOW}🧹 Cleaning up old Docker images...${NC}"
 docker image prune -f > /dev/null 2>&1
 echo -e "${GREEN}✅ Cleanup completed${NC}"
 
-# Show container status
+# Show status
 echo ""
 echo -e "${GREEN}✨ Deployment completed successfully!${NC}"
 echo ""
@@ -323,14 +343,14 @@ echo "  View logs:         docker-compose -f $COMPOSE_FILE logs -f"
 echo "  View nginx logs:   docker-compose -f $COMPOSE_FILE logs -f nginx"
 echo "  Restart app:       docker-compose -f $COMPOSE_FILE restart app"
 echo "  Restart nginx:     docker-compose -f $COMPOSE_FILE restart nginx"
-echo "  Check SSL:         docker-compose -f $COMPOSE_FILE exec nginx ls -la /etc/letsencrypt/live/"
+echo "  Check SSL:         openssl s_client -connect $DOMAIN:443 -servername $DOMAIN"
 echo "  Renew SSL:         docker-compose -f $COMPOSE_FILE run --rm certbot renew"
 echo "  Stop all:          docker-compose -f $COMPOSE_FILE down"
 echo ""
 echo -e "${BLUE}🔐 SSL Status:${NC}"
 if [ -f "$CERTBOT_DIR/conf/live/$DOMAIN/fullchain.pem" ]; then
     echo -e "${GREEN}  ✅ SSL certificates are active for $DOMAIN${NC}"
-    echo -e "${GREEN}  ✅ Auto-renewal is configured (checks every 12 hours)${NC}"
+    echo -e "${GREEN}  ✅ Auto-renewal configured (checks every 12h)${NC}"
 else
     echo -e "${YELLOW}  ⚠️  No SSL certificates found${NC}"
 fi
