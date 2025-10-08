@@ -119,8 +119,8 @@ class IntentDetector:
         else:
             # Special handling for "this year" - calculate days from Jan 1 to now
             if "this year" in question_lower:
-                start_of_year = datetime(datetime.utcnow().year, 1, 1)
-                days_since_start = (datetime.utcnow() - start_of_year).days + 1
+                start_of_year = datetime(datetime.now().year, 1, 1)
+                days_since_start = (datetime.now() - start_of_year).days + 1
                 params["period_days"] = days_since_start
             # Handle "last year" or "1 year"
             elif any(phrase in question_lower for phrase in ["last year", "past year", "in 1 year"]):
