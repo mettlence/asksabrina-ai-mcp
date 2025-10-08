@@ -45,7 +45,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./certbot/conf:/etc/letsencrypt:ro  # Fixed: correct path for certbot certs
+      - ./certbot/conf:/etc/letsencrypt:ro
       - ./certbot/www:/var/www/certbot:ro
       - nginx_logs:/var/log/nginx
     depends_on:
@@ -59,13 +59,18 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Certbot - configured for manual certificate requests
+  # This service is NOT started automatically, only run with `docker-compose run`
   certbot:
     image: certbot/certbot:latest
     container_name: certbot
     volumes:
-      - ./certbot/conf:/etc/letsencrypt
-      - ./certbot/www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done;'"
+      - ./certbot/conf:/etc/letsencrypt:rw
+      - ./certbot/www:/var/www/certbot:rw
+    # Remove the auto-renewal entrypoint - we'll use cron on the host instead
+    # entrypoint: ""  # This allows one-off commands
+    networks:
+      - app_network
     logging:
       driver: "json-file"
       options:
