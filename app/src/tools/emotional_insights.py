@@ -4,7 +4,7 @@ from collections import Counter
 
 def get_emotion_distribution(period_days=30):
     """Get breakdown of customer emotions"""
-    since = (datetime.utcnow() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$unwind": "$emotional_tone"},
@@ -16,7 +16,7 @@ def get_emotion_distribution(period_days=30):
 
 def get_emotion_conversion_rate(period_days=30):
     """Correlate emotions with payment completion"""
-    since = (datetime.utcnow() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$unwind": "$emotional_tone"},
