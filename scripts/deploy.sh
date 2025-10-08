@@ -123,8 +123,21 @@ EOF
     echo -e "${GREEN}✅ ACME path reachable. Proceeding to request certificate.${NC}"
 
     
-    # Request certificate
+    # Request certificate with better error handling
     echo -e "${YELLOW}📜 Requesting Let's Encrypt certificate...${NC}"
+
+    # Test webroot accessibility first
+    echo "Testing webroot accessibility..."
+    docker-compose -f $COMPOSE_FILE exec nginx sh -c "echo 'test' > /var/www/certbot/test.txt"
+    WEBROOT_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://$DOMAIN/.well-known/acme-challenge/../test.txt)
+
+    if [ "$WEBROOT_TEST" != "200" ]; then
+        echo -e "${RED}❌ Webroot not accessible (HTTP $WEBROOT_TEST)${NC}"
+        echo -e "${YELLOW}💡 Check nginx configuration and ensure it serves /var/www/certbot${NC}"
+        exit 1
+    fi
+
+    # Request certificate with verbose output
     docker-compose -f $COMPOSE_FILE run --rm certbot certonly \
         --webroot \
         --webroot-path /var/www/certbot \
@@ -134,52 +147,47 @@ EOF
         --rsa-key-size 4096 \
         --agree-tos \
         --non-interactive \
-        --force-renewal
-    
-    if [ $? -eq 0 ]; then
+        --force-renewal \
+        --verbose
+
+    CERT_STATUS=$?
+
+    if [ $CERT_STATUS -eq 0 ]; then
         echo -e "${GREEN}✅ SSL certificate obtained successfully${NC}"
+        
+        # Verify certificate was actually created
+        if [ ! -f "$CERTBOT_DIR/conf/live/$DOMAIN/fullchain.pem" ]; then
+            echo -e "${RED}❌ Certificate file not found after successful request${NC}"
+            exit 1
+        fi
         
         # Restore original HTTPS config
         mv "$APP_DIR/nginx/nginx.conf.backup" "$APP_DIR/nginx/nginx.conf"
-        
-        # Remove temporary config
         rm -f "$APP_DIR/nginx/nginx.http-only.conf"
         
         echo -e "${YELLOW}🔄 Reloading nginx with HTTPS config...${NC}"
         docker-compose -f $COMPOSE_FILE restart nginx
         sleep 5
     else
-        echo -e "${RED}❌ Failed to obtain SSL certificate${NC}"
+        echo -e "${RED}❌ Failed to obtain SSL certificate (exit code: $CERT_STATUS)${NC}"
         echo -e "${YELLOW}💡 Troubleshooting steps:${NC}"
-        echo -e "   1. Verify DNS: dig $DOMAIN"
-        echo -e "   2. Check if ports 80/443 are open: sudo netstat -tlnp | grep :80"
-        echo -e "   3. Test if domain resolves to this server"
-        echo -e "   4. Check nginx logs: docker-compose -f $COMPOSE_FILE logs nginx"
+        echo -e "   1. DNS Check: dig $DOMAIN (should show your server IP)"
+        echo -e "   2. Port Check: curl -I http://$DOMAIN"
+        echo -e "   3. Webroot Check: docker-compose exec nginx ls -la /var/www/certbot"
+        echo -e "   4. Nginx Logs: docker-compose logs --tail=50 nginx"
+        echo -e "   5. Certbot Logs: docker-compose logs --tail=50 certbot"
+        
+        # Show last certbot error
+        echo -e "\n${RED}Last certbot error:${NC}"
+        docker-compose -f $COMPOSE_FILE logs --tail=20 certbot
         
         # Restore original config on failure
         if [ -f "$APP_DIR/nginx/nginx.conf.backup" ]; then
             mv "$APP_DIR/nginx/nginx.conf.backup" "$APP_DIR/nginx/nginx.conf"
+            docker-compose -f $COMPOSE_FILE restart nginx
         fi
         exit 1
     fi
-else
-    echo -e "${GREEN}✅ SSL certificates found${NC}"
-    
-    # Check certificate expiry
-    CERT_FILE="$CERTBOT_DIR/conf/live/$DOMAIN/fullchain.pem"
-    if [ -f "$CERT_FILE" ]; then
-        EXPIRY=$(openssl x509 -enddate -noout -in "$CERT_FILE" | cut -d= -f2)
-        EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s)
-        NOW_EPOCH=$(date +%s)
-        DAYS_LEFT=$(( ($EXPIRY_EPOCH - $NOW_EPOCH) / 86400 ))
-        
-        echo -e "${BLUE}📅 Certificate expires in $DAYS_LEFT days ($EXPIRY)${NC}"
-        
-        if [ $DAYS_LEFT -lt 30 ]; then
-            echo -e "${YELLOW}⚠️  Certificate expires soon. It will auto-renew.${NC}"
-        fi
-    fi
-fi
 
 # Build new images
 echo -e "${YELLOW}🔨 Building Docker images...${NC}"
