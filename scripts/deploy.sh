@@ -184,6 +184,11 @@ EOF
         # Wait for file system sync
         echo -e "${YELLOW}⏳ Waiting for certificate files to sync...${NC}"
         sleep 5
+
+        # FIX PERMISSIONS (ADD THESE 3 LINES)
+        echo -e "${YELLOW}🔧 Fixing certificate permissions...${NC}"
+        sudo chown -R $USER:$USER "$CERTBOT_DIR/conf" 2>/dev/null || true
+        sleep 2
         
         # Verify certificate was created
         CERT_PATH="$CERTBOT_DIR/conf/live/$DOMAIN/fullchain.pem"
