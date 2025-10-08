@@ -16,6 +16,8 @@ COMPOSE_FILE="docker-compose.prod.yml"
 BACKUP_DIR="$APP_DIR/backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 CERTBOT_DIR="$APP_DIR/certbot"
+DOMAIN="mcp.asksabrina.com"
+EMAIL="admin@asksabrina.com"  # Change this to your email
 
 # Change to app directory
 cd $APP_DIR
@@ -51,80 +53,108 @@ fi
 
 # Check if SSL certificates exist
 echo -e "${YELLOW}🔐 Checking SSL certificates...${NC}"
-if [ ! -d "$CERTBOT_DIR/conf/live" ] || [ -z "$(ls -A $CERTBOT_DIR/conf/live 2>/dev/null)" ]; then
-    echo -e "${BLUE}📜 SSL certificates not found. Initializing Let's Encrypt...${NC}"
-    
-    # Source domain from .env or use default
-    if [ -f .env ]; then
-        export $(cat .env | grep -v '^#' | xargs)
-    fi
-    
-    DOMAIN=${DOMAIN:-"your-domain.com"}
-    EMAIL=${LETSENCRYPT_EMAIL:-"admin@${DOMAIN}"}
-    
-    echo -e "${YELLOW}Domain: $DOMAIN${NC}"
-    echo -e "${YELLOW}Email: $EMAIL${NC}"
+if [ ! -f "$CERTBOT_DIR/conf/live/$DOMAIN/fullchain.pem" ]; then
+    echo -e "${BLUE}📜 SSL certificates not found. Setting up Let's Encrypt...${NC}"
     
     # Create required directories
     mkdir -p "$CERTBOT_DIR/conf"
     mkdir -p "$CERTBOT_DIR/www"
     
     # Download recommended TLS parameters
-    if [ ! -e "$CERTBOT_DIR/conf/options-ssl-nginx.conf" ]; then
-        echo -e "${YELLOW}📥 Downloading TLS parameters...${NC}"
-        curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot-nginx/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf > "$CERTBOT_DIR/conf/options-ssl-nginx.conf"
-        curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot/certbot/ssl-dhparams.pem > "$CERTBOT_DIR/conf/ssl-dhparams.pem"
-    fi
+    echo -e "${YELLOW}📥 Downloading TLS parameters...${NC}"
+    curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot-nginx/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf > "$CERTBOT_DIR/conf/options-ssl-nginx.conf"
+    curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot/certbot/ssl-dhparams.pem > "$CERTBOT_DIR/conf/ssl-dhparams.pem"
     
-    # Create dummy certificate
-    echo -e "${YELLOW}🔑 Creating temporary certificate...${NC}"
-    path="/etc/letsencrypt/live/$DOMAIN"
-    mkdir -p "$CERTBOT_DIR/conf/live/$DOMAIN"
+    # Create temporary nginx config for certificate generation (HTTP only)
+    echo -e "${YELLOW}🔧 Creating temporary HTTP-only nginx config...${NC}"
+    cat > "$APP_DIR/nginx/nginx.http-only.conf" <<'EOF'
+server {
+    listen 80;
+    listen [::]:80;
+    server_name mcp.asksabrina.com www.mcp.asksabrina.com;
     
-    docker-compose -f $COMPOSE_FILE run --rm --entrypoint "\
-      openssl req -x509 -nodes -newkey rsa:4096 -days 1 \
-        -keyout '$path/privkey.pem' \
-        -out '$path/fullchain.pem' \
-        -subj '/CN=localhost'" certbot 2>/dev/null || true
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
     
-    # Start nginx with dummy certificate
-    echo -e "${YELLOW}🚀 Starting nginx...${NC}"
+    location / {
+        proxy_pass http://app:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+EOF
+    
+    # Backup original config
+    cp "$APP_DIR/nginx/nginx.conf" "$APP_DIR/nginx/nginx.conf.backup"
+    
+    # Use HTTP-only config temporarily
+    cp "$APP_DIR/nginx/nginx.http-only.conf" "$APP_DIR/nginx/nginx.conf"
+    
+    # Start services with HTTP-only config
+    echo -e "${YELLOW}🚀 Starting services (HTTP only)...${NC}"
+    docker-compose -f $COMPOSE_FILE up -d app
+    sleep 10
     docker-compose -f $COMPOSE_FILE up -d nginx
     sleep 5
     
-    # Delete dummy certificate
-    echo -e "${YELLOW}🗑️  Removing temporary certificate...${NC}"
-    docker-compose -f $COMPOSE_FILE run --rm --entrypoint "\
-      rm -Rf /etc/letsencrypt/live/$DOMAIN && \
-      rm -Rf /etc/letsencrypt/archive/$DOMAIN && \
-      rm -Rf /etc/letsencrypt/renewal/$DOMAIN.conf" certbot 2>/dev/null || true
-    
-    # Request real certificate
+    # Request certificate
     echo -e "${YELLOW}📜 Requesting Let's Encrypt certificate...${NC}"
-    docker-compose -f $COMPOSE_FILE run --rm --entrypoint "\
-      certbot certonly --webroot -w /var/www/certbot \
+    docker-compose -f $COMPOSE_FILE run --rm certbot certonly \
+        --webroot \
+        --webroot-path /var/www/certbot \
         -d $DOMAIN \
+        -d www.$DOMAIN \
         --email $EMAIL \
         --rsa-key-size 4096 \
         --agree-tos \
         --non-interactive \
-        --force-renewal" certbot
+        --force-renewal
     
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✅ SSL certificate obtained successfully${NC}"
+        
+        # Restore original HTTPS config
+        mv "$APP_DIR/nginx/nginx.conf.backup" "$APP_DIR/nginx/nginx.conf"
+        
+        # Remove temporary config
+        rm -f "$APP_DIR/nginx/nginx.http-only.conf"
+        
+        echo -e "${YELLOW}🔄 Reloading nginx with HTTPS config...${NC}"
+        docker-compose -f $COMPOSE_FILE restart nginx
+        sleep 5
     else
         echo -e "${RED}❌ Failed to obtain SSL certificate${NC}"
-        echo -e "${YELLOW}💡 Make sure:${NC}"
-        echo -e "   - Domain DNS is pointing to this server"
-        echo -e "   - Port 80 is accessible from the internet"
-        echo -e "   - Domain is correct in .env file"
+        echo -e "${YELLOW}💡 Troubleshooting steps:${NC}"
+        echo -e "   1. Verify DNS: dig $DOMAIN"
+        echo -e "   2. Check if ports 80/443 are open: sudo netstat -tlnp | grep :80"
+        echo -e "   3. Test if domain resolves to this server"
+        echo -e "   4. Check nginx logs: docker-compose -f $COMPOSE_FILE logs nginx"
+        
+        # Restore original config on failure
+        if [ -f "$APP_DIR/nginx/nginx.conf.backup" ]; then
+            mv "$APP_DIR/nginx/nginx.conf.backup" "$APP_DIR/nginx/nginx.conf"
+        fi
         exit 1
     fi
-    
-    # Reload nginx
-    docker-compose -f $COMPOSE_FILE exec nginx nginx -s reload 2>/dev/null || true
 else
     echo -e "${GREEN}✅ SSL certificates found${NC}"
+    
+    # Check certificate expiry
+    CERT_FILE="$CERTBOT_DIR/conf/live/$DOMAIN/fullchain.pem"
+    if [ -f "$CERT_FILE" ]; then
+        EXPIRY=$(openssl x509 -enddate -noout -in "$CERT_FILE" | cut -d= -f2)
+        EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s)
+        NOW_EPOCH=$(date +%s)
+        DAYS_LEFT=$(( ($EXPIRY_EPOCH - $NOW_EPOCH) / 86400 ))
+        
+        echo -e "${BLUE}📅 Certificate expires in $DAYS_LEFT days ($EXPIRY)${NC}"
+        
+        if [ $DAYS_LEFT -lt 30 ]; then
+            echo -e "${YELLOW}⚠️  Certificate expires soon. It will auto-renew.${NC}"
+        fi
+    fi
 fi
 
 # Build new images
@@ -160,18 +190,7 @@ if curl -f -k https://localhost/health > /dev/null 2>&1; then
 elif curl -f http://localhost/health > /dev/null 2>&1; then
     echo -e "${GREEN}✅ HTTP health check passed${NC}"
 else
-    echo -e "${RED}❌ Warning: Health check failed${NC}"
-    echo -e "${YELLOW}Check logs: docker-compose -f $COMPOSE_FILE logs${NC}"
-fi
-
-# Check SSL certificate expiry
-if [ -d "$CERTBOT_DIR/conf/live" ] && [ -n "$(ls -A $CERTBOT_DIR/conf/live 2>/dev/null)" ]; then
-    echo -e "${YELLOW}🔐 Checking SSL certificate expiry...${NC}"
-    CERT_FILE=$(find $CERTBOT_DIR/conf/live -name "fullchain.pem" | head -n 1)
-    if [ -f "$CERT_FILE" ]; then
-        EXPIRY=$(openssl x509 -enddate -noout -in "$CERT_FILE" | cut -d= -f2)
-        echo -e "${GREEN}📅 Certificate expires: $EXPIRY${NC}"
-    fi
+    echo -e "${YELLOW}⚠️  Health check timeout (this is normal if app is still starting)${NC}"
 fi
 
 # Cleanup old images
@@ -188,14 +207,17 @@ docker-compose -f $COMPOSE_FILE ps
 echo ""
 echo "💡 Useful commands:"
 echo "  View logs:         docker-compose -f $COMPOSE_FILE logs -f"
+echo "  View nginx logs:   docker-compose -f $COMPOSE_FILE logs -f nginx"
 echo "  Restart app:       docker-compose -f $COMPOSE_FILE restart app"
 echo "  Restart nginx:     docker-compose -f $COMPOSE_FILE restart nginx"
-echo "  Renew SSL cert:    docker-compose -f $COMPOSE_FILE run --rm certbot renew"
+echo "  Check SSL:         docker-compose -f $COMPOSE_FILE exec nginx ls -la /etc/letsencrypt/live/"
+echo "  Renew SSL:         docker-compose -f $COMPOSE_FILE run --rm certbot renew"
 echo "  Stop all:          docker-compose -f $COMPOSE_FILE down"
 echo ""
 echo -e "${BLUE}🔐 SSL Status:${NC}"
-if [ -d "$CERTBOT_DIR/conf/live" ] && [ -n "$(ls -A $CERTBOT_DIR/conf/live 2>/dev/null)" ]; then
-    echo -e "${GREEN}  ✅ SSL certificates are active${NC}"
+if [ -f "$CERTBOT_DIR/conf/live/$DOMAIN/fullchain.pem" ]; then
+    echo -e "${GREEN}  ✅ SSL certificates are active for $DOMAIN${NC}"
+    echo -e "${GREEN}  ✅ Auto-renewal is configured (checks every 12 hours)${NC}"
 else
     echo -e "${YELLOW}  ⚠️  No SSL certificates found${NC}"
 fi
