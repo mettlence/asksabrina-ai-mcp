@@ -181,11 +181,27 @@ EOF
     set -e  # Re-enable exit on error
     
     if [ $CERT_STATUS -eq 0 ]; then
-        # Verify certificate was actually created
-        if [ ! -f "$CERTBOT_DIR/conf/live/$DOMAIN/fullchain.pem" ]; then
-            echo -e "${RED}❌ Certificate file not found after successful request${NC}"
-            echo -e "${YELLOW}💡 Certificate may not have been created. Check certbot logs.${NC}"
-            cat /tmp/certbot_output.log
+        # Wait a moment for file system sync
+        sleep 2
+        
+        # Verify certificate was actually created (check multiple possible paths)
+        CERT_PATH="$APP_DIR/certbot/conf/live/$DOMAIN/fullchain.pem"
+        
+        if [ ! -f "$CERT_PATH" ]; then
+            echo -e "${YELLOW}⚠️  Certificate not found at expected path: $CERT_PATH${NC}"
+            echo -e "${YELLOW}🔍 Checking alternative locations...${NC}"
+            
+            # Check inside container
+            docker-compose -f $COMPOSE_FILE run --rm certbot ls -la /etc/letsencrypt/live/ || true
+            
+            # Check host filesystem
+            echo -e "${YELLOW}📂 Host filesystem:${NC}"
+            ls -la "$APP_DIR/certbot/conf/live/" 2>/dev/null || echo "Directory not found"
+            
+            echo -e "${RED}❌ Certificate file not accessible on host${NC}"
+            echo -e "${YELLOW}💡 This is a volume mount issue. Try:${NC}"
+            echo -e "   1. sudo chown -R \$USER:\$USER $APP_DIR/certbot"
+            echo -e "   2. docker-compose down && docker-compose up -d"
             exit 1
         fi
         
