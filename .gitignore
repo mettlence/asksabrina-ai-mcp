@@ -1,49 +1,20 @@
-# Python
+.env
+.env.production
+*.pyc
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
+.pytest_cache/
+.coverage
 .venv
-
-# IDE
+*.log
+certbot/conf/*
+certbot/www/*
+!certbot/conf/.gitkeep
+!certbot/www/.gitkeep
+.DS_Store
+venv/
+env/
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# Environment
-.env
-.env.local
-.env.*.local
-.env.*
-
-# Logs
-*.log
-logs/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Git
-.git/
-.gitignore
-
-# Documentation
-README.md
-docs/
-dump/
-
-# Testing
-tests/
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Docker
-docker-compose.override.yml

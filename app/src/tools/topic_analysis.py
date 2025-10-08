@@ -4,7 +4,7 @@ from collections import Counter
 
 def get_trending_topics(period_days=7, limit=10):
     """Get trending topics in specified period"""
-    since = datetime.utcnow() - timedelta(days=period_days)
+    since = (datetime.utcnow() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$unwind": "$topics"},
@@ -17,7 +17,7 @@ def get_trending_topics(period_days=7, limit=10):
 
 def get_topic_revenue_correlation(period_days=30):
     """Show which topics generate most revenue"""
-    since = datetime.utcnow() - timedelta(days=period_days)
+    since = (datetime.utcnow() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     pipeline = [
         {"$match": {
             "reference_date": {"$gte": since},
@@ -37,7 +37,7 @@ def get_topic_revenue_correlation(period_days=30):
 
 def get_question_patterns(period_days=30):
     """Analyze common question themes"""
-    since = datetime.utcnow() - timedelta(days=period_days)
+    since = (datetime.utcnow() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     docs = ai_insight.find(
         {"reference_date": {"$gte": since}},
         {"questions": 1, "topics": 1}

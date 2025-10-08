@@ -3,7 +3,7 @@ from src.db.mongo import ai_insight
 
 def get_sentiment_distribution(period_days=30):
     """Overall sentiment breakdown"""
-    since = datetime.utcnow() - timedelta(days=period_days)
+    since = (datetime.utcnow() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$group": {
@@ -18,7 +18,7 @@ def get_sentiment_distribution(period_days=30):
 
 def get_sentiment_by_product(period_days=30):
     """Sentiment analysis per product"""
-    since = datetime.utcnow() - timedelta(days=period_days)
+    since = (datetime.utcnow() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$group": {
@@ -35,7 +35,7 @@ def get_sentiment_by_product(period_days=30):
 
 def get_keyword_frequency(period_days=30, limit=20):
     """Most mentioned keywords"""
-    since = datetime.utcnow() - timedelta(days=period_days)
+    since = (datetime.utcnow() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$unwind": "$keywords"},

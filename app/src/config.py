@@ -1,7 +1,8 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    APP_ENV: str = "development"
+    APP_NAME: str = "Asksabrina AI MCP"
+    APP_ENV: str = "production"
     PORT: int = 8000
 
     MONGODB_URI: str
@@ -15,6 +16,6 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
-        extra = "ignore"  # <-- allows extra keys if any
+        case_sensitive = False
 
 settings = Settings()
