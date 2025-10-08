@@ -31,7 +31,7 @@ jobs:
 
     - name: 🏥 Health Check
       run: |
-        response=$(curl -s -o /dev/null -w "%{http_code}" ${{ env.APP_URL }}/health)
+        response=$(curl -s -o /dev/null -w "%{http_code}" -k https://${{ secrets.EC2_HOST }}/health)
         if [ $response -eq 200 ]; then
           echo "✅ Health check passed (HTTP $response)"
         else
