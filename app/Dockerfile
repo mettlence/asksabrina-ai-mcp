@@ -8,26 +8,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install Python dependencies to a specific location
 COPY requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
+RUN pip install --prefix=/install --no-cache-dir -r requirements.txt
 
 # Production stage
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy only necessary files from builder
-COPY --from=builder /root/.local /root/.local
+# Copy installed packages from builder
+COPY --from=builder /install /usr/local
+
+# Copy application code
 COPY src/ ./src/
 
-# Add non-root user
+# Add non-root user and set permissions
 RUN groupadd -r appuser && useradd -r -g appuser appuser \
     && chown -R appuser:appuser /app
 
-# Make sure scripts in .local are usable
-ENV PATH=/root/.local/bin:$PATH
-
+# Switch to non-root user
 USER appuser
 
 EXPOSE 8000

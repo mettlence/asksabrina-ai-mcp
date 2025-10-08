@@ -1,5 +1,5 @@
 .env
-.env.production
+.env.local
 *.pyc
 __pycache__/
 .pytest_cache/
