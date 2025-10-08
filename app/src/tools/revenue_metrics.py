@@ -3,7 +3,7 @@ from src.db.mongo import ai_insight
 
 def get_payment_success_rate(period_days=30):
     """Calculate payment completion rates"""
-    since = datetime.utcnow() - timedelta(days=period_days)
+    since = (datetime.utcnow() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$group": {
@@ -40,7 +40,7 @@ def get_payment_success_rate(period_days=30):
 
 def get_revenue_trends(period_days=30, group_by="day"):
     """Revenue trends over time"""
-    since = datetime.utcnow() - timedelta(days=period_days)
+    since = (datetime.utcnow() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     
     date_format = {
         "day": "%Y-%m-%d",
@@ -66,7 +66,7 @@ def get_revenue_trends(period_days=30, group_by="day"):
 
 def get_product_performance(period_days=30):
     """Best performing products"""
-    since = datetime.utcnow() - timedelta(days=period_days)
+    since = (datetime.utcnow() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     pipeline = [
         {"$match": {
             "reference_date": {"$gte": since},

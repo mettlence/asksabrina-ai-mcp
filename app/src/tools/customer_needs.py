@@ -4,7 +4,7 @@ from collections import Counter
 
 def get_customer_needs_distribution(period_days=30):
     """Identify what customers are looking for"""
-    since = datetime.utcnow() - timedelta(days=period_days)
+    since = (datetime.utcnow() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$unwind": "$possible_needs"},
@@ -19,7 +19,7 @@ def get_customer_needs_distribution(period_days=30):
 
 def get_unmet_needs_analysis(period_days=30):
     """Find gaps in service based on needs vs completion"""
-    since = datetime.utcnow() - timedelta(days=period_days)
+    since = (datetime.utcnow() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$unwind": "$possible_needs"},
