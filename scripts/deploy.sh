@@ -79,7 +79,7 @@ if [ ! -f "$CERTBOT_DIR/conf/live/$DOMAIN/fullchain.pem" ]; then
 server {
     listen 80;
     listen [::]:80;
-    server_name mcp.asksabrina.com www.mcp.asksabrina.com;
+    server_name mcp.asksabrina.com;
     
     # ACME challenge location - MUST be accessible
     location /.well-known/acme-challenge/ {
@@ -169,7 +169,6 @@ EOF
         --webroot \
         --webroot-path /var/www/certbot \
         -d $DOMAIN \
-        -d www.$DOMAIN \
         --email $EMAIL \
         --rsa-key-size 4096 \
         --agree-tos \
