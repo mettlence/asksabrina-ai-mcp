@@ -59,11 +59,19 @@ if [ ! -f "$CERTBOT_DIR/conf/live/$DOMAIN/fullchain.pem" ]; then
     # Create required directories
     mkdir -p "$CERTBOT_DIR/conf"
     mkdir -p "$CERTBOT_DIR/www"
+    mkdir -p "$CERTBOT_DIR/www/.well-known/acme-challenge"
+    
+    # Set proper permissions
+    chmod -R 755 "$CERTBOT_DIR/www"
     
     # Download recommended TLS parameters
     echo -e "${YELLOW}📥 Downloading TLS parameters...${NC}"
-    curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot-nginx/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf > "$CERTBOT_DIR/conf/options-ssl-nginx.conf"
-    curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot/certbot/ssl-dhparams.pem > "$CERTBOT_DIR/conf/ssl-dhparams.pem"
+    if [ ! -f "$CERTBOT_DIR/conf/options-ssl-nginx.conf" ]; then
+        curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot-nginx/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf > "$CERTBOT_DIR/conf/options-ssl-nginx.conf"
+    fi
+    if [ ! -f "$CERTBOT_DIR/conf/ssl-dhparams.pem" ]; then
+        curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot/certbot/ssl-dhparams.pem > "$CERTBOT_DIR/conf/ssl-dhparams.pem"
+    fi
     
     # Create temporary nginx config for certificate generation (HTTP only)
     echo -e "${YELLOW}🔧 Creating temporary HTTP-only nginx config...${NC}"
@@ -73,8 +81,11 @@ server {
     listen [::]:80;
     server_name mcp.asksabrina.com www.mcp.asksabrina.com;
     
+    # ACME challenge location - MUST be accessible
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
+        allow all;
+        default_type text/plain;
     }
     
     location / {
@@ -82,12 +93,15 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 EOF
     
     # Backup original config
-    cp "$APP_DIR/nginx/nginx.conf" "$APP_DIR/nginx/nginx.conf.backup"
+    if [ -f "$APP_DIR/nginx/nginx.conf" ]; then
+        cp "$APP_DIR/nginx/nginx.conf" "$APP_DIR/nginx/nginx.conf.backup"
+    fi
     
     # Use HTTP-only config temporarily
     cp "$APP_DIR/nginx/nginx.http-only.conf" "$APP_DIR/nginx/nginx.conf"
@@ -99,45 +113,58 @@ EOF
     docker-compose -f $COMPOSE_FILE up -d nginx
     sleep 5
 
+    # Verify DNS resolution
+    echo -e "${YELLOW}🌐 Verifying DNS resolution...${NC}"
+    DNS_IP=$(dig +short $DOMAIN | head -n1)
+    if [ -z "$DNS_IP" ]; then
+        echo -e "${RED}❌ DNS not resolving for $DOMAIN${NC}"
+        echo -e "${YELLOW}💡 Please ensure DNS A record points to this server${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✅ DNS resolves to: $DNS_IP${NC}"
+
     # Prove the ACME challenge path is reachable from the Internet before certbot
     echo -e "${YELLOW}🧪 Probing ACME challenge path...${NC}"
     TOKEN=$(head -c16 /dev/urandom | xxd -p)
     mkdir -p "$CERTBOT_DIR/www/.well-known/acme-challenge"
     echo "ok-$TOKEN" > "$CERTBOT_DIR/www/.well-known/acme-challenge/$TOKEN"
+    chmod 644 "$CERTBOT_DIR/www/.well-known/acme-challenge/$TOKEN"
 
     # Wait up to ~60s for nginx to serve it
     ACME_OK=0
     for i in {1..30}; do
-    if curl -s "http://$DOMAIN/.well-known/acme-challenge/$TOKEN" | grep -q "ok-$TOKEN"; then
-        ACME_OK=1; break
-    fi
-    sleep 2
+        RESPONSE=$(curl -s "http://$DOMAIN/.well-known/acme-challenge/$TOKEN" || echo "")
+        if echo "$RESPONSE" | grep -q "ok-$TOKEN"; then
+            ACME_OK=1
+            break
+        fi
+        echo -e "${YELLOW}  Attempt $i/30: Waiting for ACME path...${NC}"
+        sleep 2
     done
 
     if [ $ACME_OK -ne 1 ]; then
-    echo -e "${RED}❌ ACME path not reachable at http://$DOMAIN/.well-known/acme-challenge/$TOKEN${NC}"
-    echo -e "${YELLOW}💡 Check: ports mapping (80:80), EC2 security group, DNS A/AAAA, nginx volume mounts${NC}"
-    docker compose -f $COMPOSE_FILE logs --tail=100 nginx
-    exit 1
-    fi
-    echo -e "${GREEN}✅ ACME path reachable. Proceeding to request certificate.${NC}"
-
-    
-    # Request certificate with better error handling
-    echo -e "${YELLOW}📜 Requesting Let's Encrypt certificate...${NC}"
-
-    # Test webroot accessibility first
-    echo "Testing webroot accessibility..."
-    docker-compose -f $COMPOSE_FILE exec nginx sh -c "echo 'test' > /var/www/certbot/test.txt"
-    WEBROOT_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://$DOMAIN/.well-known/acme-challenge/../test.txt)
-
-    if [ "$WEBROOT_TEST" != "200" ]; then
-        echo -e "${RED}❌ Webroot not accessible (HTTP $WEBROOT_TEST)${NC}"
-        echo -e "${YELLOW}💡 Check nginx configuration and ensure it serves /var/www/certbot${NC}"
+        echo -e "${RED}❌ ACME path not reachable at http://$DOMAIN/.well-known/acme-challenge/$TOKEN${NC}"
+        echo -e "${YELLOW}💡 Troubleshooting:${NC}"
+        echo -e "   1. Check ports mapping: docker-compose ps"
+        echo -e "   2. Check EC2 security group allows port 80"
+        echo -e "   3. Verify DNS: dig $DOMAIN"
+        echo -e "   4. Check nginx volumes: docker-compose exec nginx ls -la /var/www/certbot/"
+        echo -e "\n${YELLOW}📋 Nginx logs:${NC}"
+        docker-compose -f $COMPOSE_FILE logs --tail=100 nginx
         exit 1
     fi
+    echo -e "${GREEN}✅ ACME path reachable. Proceeding to request certificate.${NC}"
+    
+    # Clean up test file
+    rm -f "$CERTBOT_DIR/www/.well-known/acme-challenge/$TOKEN"
 
-    # Request certificate with verbose output
+    # Request certificate with enhanced error handling
+    echo -e "${YELLOW}📜 Requesting Let's Encrypt certificate...${NC}"
+    echo -e "${BLUE}   Domain: $DOMAIN${NC}"
+    echo -e "${BLUE}   Email: $EMAIL${NC}"
+    
+    # Run certbot with verbose output
+    set +e  # Don't exit on error, we want to handle it
     docker-compose -f $COMPOSE_FILE run --rm certbot certonly \
         --webroot \
         --webroot-path /var/www/certbot \
@@ -148,38 +175,59 @@ EOF
         --agree-tos \
         --non-interactive \
         --force-renewal \
-        --verbose
-
-    CERT_STATUS=$?
-
+        --verbose \
+        2>&1 | tee /tmp/certbot_output.log
+    
+    CERT_STATUS=${PIPESTATUS[0]}
+    set -e  # Re-enable exit on error
+    
     if [ $CERT_STATUS -eq 0 ]; then
-        echo -e "${GREEN}✅ SSL certificate obtained successfully${NC}"
-        
         # Verify certificate was actually created
         if [ ! -f "$CERTBOT_DIR/conf/live/$DOMAIN/fullchain.pem" ]; then
             echo -e "${RED}❌ Certificate file not found after successful request${NC}"
+            echo -e "${YELLOW}💡 Certificate may not have been created. Check certbot logs.${NC}"
+            cat /tmp/certbot_output.log
             exit 1
         fi
         
+        echo -e "${GREEN}✅ SSL certificate obtained successfully${NC}"
+        
+        # Verify certificate validity
+        echo -e "${YELLOW}🔍 Verifying certificate...${NC}"
+        CERT_DOMAIN=$(openssl x509 -noout -subject -in "$CERTBOT_DIR/conf/live/$DOMAIN/fullchain.pem" | sed -n 's/.*CN=\([^,]*\).*/\1/p')
+        echo -e "${GREEN}✅ Certificate issued for: $CERT_DOMAIN${NC}"
+        
         # Restore original HTTPS config
-        mv "$APP_DIR/nginx/nginx.conf.backup" "$APP_DIR/nginx/nginx.conf"
+        if [ -f "$APP_DIR/nginx/nginx.conf.backup" ]; then
+            mv "$APP_DIR/nginx/nginx.conf.backup" "$APP_DIR/nginx/nginx.conf"
+        fi
+        
+        # Remove temporary config
         rm -f "$APP_DIR/nginx/nginx.http-only.conf"
         
         echo -e "${YELLOW}🔄 Reloading nginx with HTTPS config...${NC}"
         docker-compose -f $COMPOSE_FILE restart nginx
         sleep 5
+        
+        echo -e "${GREEN}✅ HTTPS is now active!${NC}"
     else
         echo -e "${RED}❌ Failed to obtain SSL certificate (exit code: $CERT_STATUS)${NC}"
-        echo -e "${YELLOW}💡 Troubleshooting steps:${NC}"
-        echo -e "   1. DNS Check: dig $DOMAIN (should show your server IP)"
-        echo -e "   2. Port Check: curl -I http://$DOMAIN"
-        echo -e "   3. Webroot Check: docker-compose exec nginx ls -la /var/www/certbot"
-        echo -e "   4. Nginx Logs: docker-compose logs --tail=50 nginx"
-        echo -e "   5. Certbot Logs: docker-compose logs --tail=50 certbot"
+        echo -e "\n${RED}Certbot Error Output:${NC}"
+        cat /tmp/certbot_output.log
         
-        # Show last certbot error
-        echo -e "\n${RED}Last certbot error:${NC}"
-        docker-compose -f $COMPOSE_FILE logs --tail=20 certbot
+        echo -e "\n${YELLOW}💡 Common issues and fixes:${NC}"
+        echo -e "   ${BLUE}Rate Limit:${NC} If you see 'too many certificates', wait 1 hour or use --staging flag"
+        echo -e "   ${BLUE}DNS Issue:${NC} Ensure $DOMAIN points to this server's IP"
+        echo -e "   ${BLUE}Port 80 Blocked:${NC} Check firewall/security group allows port 80"
+        echo -e "   ${BLUE}CAA Records:${NC} Check DNS CAA records allow Let's Encrypt"
+        
+        echo -e "\n${YELLOW}📋 Additional diagnostics:${NC}"
+        echo -e "   DNS Resolution: $(dig +short $DOMAIN)"
+        echo -e "   Port 80 Status: $(sudo netstat -tlnp | grep :80 || echo 'Not listening')"
+        echo -e "   Certbot Logs: /tmp/certbot_output.log"
+        
+        echo -e "\n${YELLOW}🔧 To retry with Let's Encrypt staging (no rate limits):${NC}"
+        echo -e "   Add --staging flag to certbot command in the script"
         
         # Restore original config on failure
         if [ -f "$APP_DIR/nginx/nginx.conf.backup" ]; then
@@ -188,6 +236,24 @@ EOF
         fi
         exit 1
     fi
+else
+    echo -e "${GREEN}✅ SSL certificates found${NC}"
+    
+    # Check certificate expiry
+    CERT_FILE="$CERTBOT_DIR/conf/live/$DOMAIN/fullchain.pem"
+    if [ -f "$CERT_FILE" ]; then
+        EXPIRY=$(openssl x509 -enddate -noout -in "$CERT_FILE" | cut -d= -f2)
+        EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s)
+        NOW_EPOCH=$(date +%s)
+        DAYS_LEFT=$(( ($EXPIRY_EPOCH - $NOW_EPOCH) / 86400 ))
+        
+        echo -e "${BLUE}📅 Certificate expires in $DAYS_LEFT days ($EXPIRY)${NC}"
+        
+        if [ $DAYS_LEFT -lt 30 ]; then
+            echo -e "${YELLOW}⚠️  Certificate expires soon. It will auto-renew.${NC}"
+        fi
+    fi
+fi
 
 # Build new images
 echo -e "${YELLOW}🔨 Building Docker images...${NC}"
