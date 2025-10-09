@@ -51,15 +51,15 @@ jobs:
         echo "- **Application URL:** ${{ env.APP_URL }}" >> $GITHUB_STEP_SUMMARY
 
     - name: 📢 Slack Notification
-      if: always()
+      if: success()
       uses: slackapi/slack-github-action@v1.25.0
       with:
         payload: |
           {
-            "text": "${{ job.status == 'success' && '✅ Deployment completed successfully' || '❌ Deployment failed' }}",
+            "text": "Deployment completed successfully",
             "attachments": [
               {
-                "color": "${{ job.status == 'success' && '#36a64f' || '#FF0000' }}",
+                "color": "#36a64f",
                 "fields": [
                   {
                     "title": "Application URL",
