@@ -50,7 +50,7 @@ jobs:
         echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Application URL:** ${{ env.APP_URL }}" >> $GITHUB_STEP_SUMMARY
 
-    - name: 📢 Slack Notification
+    - name: 📢 Slack Notification - Success
       if: success()
       run: |
         curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
@@ -58,12 +58,32 @@ jobs:
           -d '{
             "attachments": [{
               "color": "#36a64f",
-              "text": "Deployment completed successfully",
+              "text": "*Deployment Completed*",
               "fields": [{
                 "title": "Application URL",
                 "value": "${{ env.APP_URL }}",
                 "short": false
               }],
-              "footer": "AI MCP Pipeline"
+              "footer": "AI MCP Pipeline",
+              "ts": '"$(date +%s)"'
+            }]
+          }'
+
+    - name: 📢 Slack Notification - Failed
+      if: failure()
+      run: |
+        curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
+          -H 'Content-Type: application/json' \
+          -d '{
+            "attachments": [{
+              "color": "#FF0000",
+              "text": "*Deployment Failed*",
+              "fields": [{
+                "title": "Application URL",
+                "value": "${{ env.APP_URL }}",
+                "short": false
+              }],
+              "footer": "AI MCP Pipeline",
+              "ts": '"$(date +%s)"'
             }]
           }'
