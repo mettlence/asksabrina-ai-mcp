@@ -50,22 +50,45 @@ jobs:
         echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Application URL:** ${{ env.APP_URL }}" >> $GITHUB_STEP_SUMMARY
 
-    - name: 📢 Slack Notification (simple attachment)
+    - name: 📢 Slack Notification
       if: always()
       uses: slackapi/slack-github-action@v1.25.0
       with:
         payload: |
           {
-            "attachments": [
-              {
-                "color": ${{ toJSON((job.status == 'success' && '#36a64f') || '#e01e5a') }},
-                "title": ${{ toJSON((job.status == 'success' && '✅ Deployment Successful') || '❌ Deployment Failed') }},
-                "title_link": ${{ toJSON(format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id)) }},
-                "text": ${{ toJSON(format('*Branch:* {0}\n*Commit:* {1}', github.ref_name, github.event.head_commit.message)) }},
-                "mrkdwn_in": ["text"],
-                "footer": "GitHub Actions"
-              }
-            ]
+            "attachments": [{
+              "color": "${{ job.status == 'success' && '#36a64f' || '#FF0000' }}",
+              "text": "${{ job.status == 'success' && '✅ Deployment completed successfully' || '❌ Deployment failed' }}",
+              "fields": [
+                {
+                  "title": "Status",
+                  "value": "${{ job.status }}",
+                  "short": true
+                },
+                {
+                  "title": "Branch",
+                  "value": "${{ github.ref_name }}",
+                  "short": true
+                },
+                {
+                  "title": "Commit",
+                  "value": "${{ github.sha }}",
+                  "short": true
+                },
+                {
+                  "title": "Author",
+                  "value": "${{ github.actor }}",
+                  "short": true
+                },
+                {
+                  "title": "Application URL",
+                  "value": "${{ env.APP_URL }}",
+                  "short": false
+                }
+              ],
+              "footer": "AI MCP Pipeline",
+              "ts": ${{ github.event.head_commit.timestamp }}
+            }]
           }
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
