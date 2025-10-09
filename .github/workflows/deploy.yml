@@ -56,10 +56,10 @@ jobs:
       with:
         payload: |
           {
+            "text": "${{ job.status == 'success' && '✅ Deployment completed successfully' || '❌ Deployment failed' }}",
             "attachments": [
               {
                 "color": "${{ job.status == 'success' && '#36a64f' || '#FF0000' }}",
-                "text": "${{ job.status == 'success' && '✅ Deployment completed successfully' || '❌ Deployment failed' }}",
                 "fields": [
                   {
                     "title": "Application URL",
