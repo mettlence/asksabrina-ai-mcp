@@ -50,22 +50,40 @@ jobs:
         echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Application URL:** ${{ env.APP_URL }}" >> $GITHUB_STEP_SUMMARY
 
+    # 1) Capture a Unix timestamp for Slack's `ts`
+    - name: Set timestamp
+      if: always()
+      run: echo "TIMESTAMP=$(date +%s)" >> $GITHUB_ENV
+
+    # 2) Send colorful attachment to Slack
     - name: 📢 Slack Notification
       if: always()
       uses: slackapi/slack-github-action@v1.25.0
       with:
         payload: |
           {
-            "text": ${{ toJSON(format('{0} Deployment {1} - {2}', (job.status == 'success' && '✅' || '❌'), job.status, github.event.head_commit.message)) }},
-            "blocks": [
+            "text": ${{ toJSON(format('{0} Deployment {1} - {2}', (job.status == 'success' && '✅' || job.status == 'cancelled' && '🟡' || '❌'), job.status, github.event.head_commit.message)) }},
+            "attachments": [
               {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": ${{ toJSON(format('{0} *Deployment {1}*\n\n*Commit:* {2}\n*Author:* {3}\n*Branch:* {4}', (job.status == 'success' && '✅' || '❌'), (job.status == 'success' && 'Successful' || 'Failed'), github.event.head_commit.message, github.actor, github.ref_name)) }}
-                }
+                "color": ${{ toJSON(job.status == 'success' && '#36a64f' || job.status == 'cancelled' && '#daa038' || '#e01e5a') }},
+                "pretext": ${{ toJSON(format('{0} {1}', (job.status == 'success' && '✅' || job.status == 'cancelled' && '🟡' || '❌'), (job.status == 'success' && 'Deployment Successful' || job.status == 'cancelled' && 'Deployment Cancelled' || 'Deployment Failed'))) }},
+                "title": ${{ toJSON(format('Build #{0} • {1}', github.run_number, github.workflow)) }},
+                "title_link": ${{ toJSON(format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id)) }},
+                "text": ${{ toJSON(format('*Commit:* {0}\n*Author:* {1}\n*Branch:* {2}', github.event.head_commit.message, github.actor, github.ref_name)) }},
+                "fields": [
+                  { "title": "Repository", "value": ${{ toJSON(github.repository) }}, "short": true },
+                  { "title": "SHA", "value": ${{ toJSON(github.sha) }}, "short": true },
+                  { "title": "Environment", "value": ${{ toJSON(env.APP_URL) }}, "short": true },
+                  { "title": "Run URL", "value": ${{ toJSON(format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id)) }}, "short": true }
+                ],
+                "footer": ${{ toJSON(format('GitHub Actions — {0}', env.APP_URL)) }},
+                "footer_icon": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+                "ts": ${{ env.TIMESTAMP }},
+                "mrkdwn_in": ["pretext", "text", "fields"]
               }
             ]
           }
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        APP_URL: ${{ env.APP_URL }} # keep if you're already setting this elsewhere
+
