@@ -87,7 +87,7 @@ jobs:
                 }
               ],
               "footer": "AI MCP Pipeline",
-              "ts": ${{ github.event.head_commit.timestamp }}
+              "ts": ${{ github.event.repository.updated_at }}
             }]
           }
       env:
