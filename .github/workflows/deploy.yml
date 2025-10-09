@@ -56,39 +56,20 @@ jobs:
       with:
         payload: |
           {
-            "attachments": [{
-              "color": "${{ job.status == 'success' && '#36a64f' || '#FF0000' }}",
-              "text": "${{ job.status == 'success' && '✅ Deployment completed successfully' || '❌ Deployment failed' }}",
-              "fields": [
-                {
-                  "title": "Status",
-                  "value": "${{ job.status }}",
-                  "short": true
-                },
-                {
-                  "title": "Branch",
-                  "value": "${{ github.ref_name }}",
-                  "short": true
-                },
-                {
-                  "title": "Commit",
-                  "value": "${{ github.sha }}",
-                  "short": true
-                },
-                {
-                  "title": "Author",
-                  "value": "${{ github.actor }}",
-                  "short": true
-                },
-                {
-                  "title": "Application URL",
-                  "value": "${{ env.APP_URL }}",
-                  "short": false
-                }
-              ],
-              "footer": "AI MCP Pipeline",
-              "ts": ${{ github.event.repository.updated_at }}
-            }]
+            "attachments": [
+              {
+                "color": "${{ job.status == 'success' && '#36a64f' || '#FF0000' }}",
+                "text": "${{ job.status == 'success' && '✅ Deployment completed successfully' || '❌ Deployment failed' }}",
+                "fields": [
+                  {
+                    "title": "Application URL",
+                    "value": "${{ env.APP_URL }}",
+                    "short": false
+                  }
+                ],
+                "footer": "AI MCP Pipeline"
+              }
+            ]
           }
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
