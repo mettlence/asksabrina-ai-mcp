@@ -52,24 +52,18 @@ jobs:
 
     - name: 📢 Slack Notification
       if: success()
-      uses: slackapi/slack-github-action@v1.25.0
-      with:
-        payload: |
-          {
-            "text": "Deployment completed successfully",
-            "attachments": [
-              {
-                "color": "#36a64f",
-                "fields": [
-                  {
-                    "title": "Application URL",
-                    "value": "${{ env.APP_URL }}",
-                    "short": false
-                  }
-                ],
-                "footer": "AI MCP Pipeline"
-              }
-            ]
-          }
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      run: |
+        curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
+          -H 'Content-Type: application/json' \
+          -d '{
+            "attachments": [{
+              "color": "#36a64f",
+              "text": "Deployment completed successfully",
+              "fields": [{
+                "title": "Application URL",
+                "value": "${{ env.APP_URL }}",
+                "short": false
+              }],
+              "footer": "AI MCP Pipeline"
+            }]
+          }'
