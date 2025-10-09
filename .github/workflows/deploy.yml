@@ -56,13 +56,13 @@ jobs:
       with:
         payload: |
           {
-            "text": "${{ job.status == 'success' && '✅' || '❌' }} Deployment ${{ job.status }} - ${{ github.event.head_commit.message }}",
+            "text": ${{ toJSON(format('{0} Deployment {1} - {2}', (job.status == 'success' && '✅' || '❌'), job.status, github.event.head_commit.message)) }},
             "blocks": [
               {
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "${{ job.status == 'success' && '✅ *Deployment Successful*' || '❌ *Deployment Failed*' }}\n\n*Commit:* ${{ github.event.head_commit.message }}\n*Author:* ${{ github.actor }}\n*Branch:* ${{ github.ref_name }}"
+                  "text": ${{ toJSON(format('{0} *Deployment {1}*\n\n*Commit:* {2}\n*Author:* {3}\n*Branch:* {4}', (job.status == 'success' && '✅' || '❌'), (job.status == 'success' && 'Successful' || 'Failed'), github.event.head_commit.message, github.actor, github.ref_name)) }}
                 }
               }
             ]
