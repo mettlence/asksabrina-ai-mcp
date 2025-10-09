@@ -50,7 +50,7 @@ jobs:
         echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Application URL:** ${{ env.APP_URL }}" >> $GITHUB_STEP_SUMMARY
 
-    - name: 📢 Slack Notification
+    - name: 📢 Slack Notification (simple attachment)
       if: always()
       uses: slackapi/slack-github-action@v1.25.0
       with:
@@ -58,8 +58,8 @@ jobs:
           {
             "attachments": [
               {
-                "color": ${{ toJSON(job.status == 'success' && '#36a64f' || '#e01e5a') }},
-                "title": ${{ toJSON(job.status == 'success' ? '✅ Deployment Successful' : '❌ Deployment Failed') }},
+                "color": ${{ toJSON((job.status == 'success' && '#36a64f') || '#e01e5a') }},
+                "title": ${{ toJSON((job.status == 'success' && '✅ Deployment Successful') || '❌ Deployment Failed') }},
                 "title_link": ${{ toJSON(format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id)) }},
                 "text": ${{ toJSON(format('*Branch:* {0}\n*Commit:* {1}', github.ref_name, github.event.head_commit.message)) }},
                 "mrkdwn_in": ["text"],
@@ -69,4 +69,3 @@ jobs:
           }
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
