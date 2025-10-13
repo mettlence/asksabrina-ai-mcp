@@ -250,7 +250,7 @@ def get_fast_vs_slow_payers(period_days=30, threshold_hours=24):
 
 def get_abandoned_carts(hours_threshold=48):
     """Find unpaid orders older than threshold (potential abandoned carts)"""
-    cutoff = datetime.now() - timedelta(hours=hours_threshold)
+    cutoff = datetime.utcnow() - timedelta(hours=hours_threshold)
     pipeline = [
         {"$match": {
             "payment_status": 0,
@@ -260,11 +260,70 @@ def get_abandoned_carts(hours_threshold=48):
             "_id": "$customer_id",
             "abandoned_orders": {"$sum": 1},
             "total_abandoned_value": {"$sum": "$total_price"},
-            "topics": {"$addToSet": "$topics"},
-            "emotions": {"$addToSet": "$emotional_tone"},
-            "last_abandoned": {"$max": "$created_at"}
+            "order_ids": {"$push": "$order_id"},
+            "topics": {"$push": "$topics"},
+            "emotions": {"$push": "$emotional_tone"},
+            "last_abandoned": {"$max": "$created_at"},
+            "first_abandoned": {"$min": "$created_at"}
         }},
         {"$sort": {"total_abandoned_value": -1}},
         {"$limit": 50}
     ]
-    return list(ai_insight.aggregate(pipeline))
+    results = list(ai_insight.aggregate(pipeline))
+    
+    # Format with customer info
+    formatted = []
+    for r in results:
+        formatted.append({
+            "customer_id": r["_id"],
+            "abandoned_orders": r["abandoned_orders"],
+            "total_abandoned_value": r["total_abandoned_value"],
+            "avg_order_value": round(r["total_abandoned_value"] / r["abandoned_orders"], 2),
+            "order_ids": r["order_ids"],
+            "last_abandoned_date": r["last_abandoned"],
+            "first_abandoned_date": r["first_abandoned"],
+            "days_since_last_abandoned": (datetime.utcnow() - r["last_abandoned"]).days
+        })
+    
+    return {
+        "total_customers": len(formatted),
+        "total_abandoned_orders": sum(c["abandoned_orders"] for c in formatted),
+        "total_abandoned_value": sum(c["total_abandoned_value"] for c in formatted),
+        "customers": formatted
+    }
+
+
+def get_unpaid_orders_count(period_days=30):
+    """Count all unpaid orders in a period"""
+    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    pipeline = [
+        {"$match": {
+            "created_at": {"$gte": since},
+            "payment_status": 0
+        }},
+        {"$group": {
+            "_id": None,
+            "total_unpaid": {"$sum": 1},
+            "total_value": {"$sum": "$total_price"},
+            "avg_order_value": {"$avg": "$total_price"}
+        }}
+    ]
+    
+    result = list(ai_insight.aggregate(pipeline))
+    
+    if not result:
+        return {
+            "total_unpaid": 0,
+            "total_value": 0,
+            "avg_order_value": 0,
+            "period_days": period_days
+        }
+    
+    data = result[0]
+    return {
+        "total_unpaid": data.get("total_unpaid", 0),
+        "total_value": data.get("total_value", 0),
+        "avg_order_value": round(data.get("avg_order_value", 0), 2),
+        "period_days": period_days
+    }

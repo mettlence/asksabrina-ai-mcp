@@ -34,6 +34,37 @@ def get_topic_revenue_correlation(period_days=30):
     ]
     return list(ai_insight.aggregate(pipeline))
 
+def get_topics_by_emotion(emotion_filter=None, period_days=30):
+    """Get topics filtered by specific emotion and their revenue"""
+    since = datetime.utcnow() - timedelta(days=period_days)
+    
+    match_stage = {
+        "created_at": {"$gte": since},
+        "payment_status": 1
+    }
+    
+    # Add emotion filter if provided
+    if emotion_filter:
+        if isinstance(emotion_filter, list):
+            match_stage["emotional_tone"] = {"$in": emotion_filter}
+        else:
+            match_stage["emotional_tone"] = emotion_filter
+    
+    pipeline = [
+        {"$match": match_stage},
+        {"$unwind": "$topics"},
+        {"$group": {
+            "_id": "$topics",
+            "total_revenue": {"$sum": "$total_price"},
+            "order_count": {"$sum": 1},
+            "avg_order_value": {"$avg": "$total_price"},
+            "emotions": {"$addToSet": "$emotional_tone"}
+        }},
+        {"$sort": {"total_revenue": -1}},
+        {"$limit": 20}
+    ]
+    
+    return list(ai_insight.aggregate(pipeline))
 
 def get_question_patterns(period_days=30):
     """Analyze common question themes"""

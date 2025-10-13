@@ -60,8 +60,8 @@ jobs:
               "color": "#36a64f",
               "text": "*Deployment Completed*",
               "fields": [{
-                "title": "Application URL",
-                "value": "${{ env.APP_URL }}",
+                "title": "APP URL",
+                "value": "${{ env.APP_URL }}/docs",
                 "short": false
               }],
               "footer": "AI MCP Pipeline",
@@ -79,8 +79,8 @@ jobs:
               "color": "#FF0000",
               "text": "*Deployment Failed*",
               "fields": [{
-                "title": "Application URL",
-                "value": "${{ env.APP_URL }}",
+                "title": "APP URL",
+                "value": "${{ env.APP_URL }}/docs",
                 "short": false
               }],
               "footer": "AI MCP Pipeline",
