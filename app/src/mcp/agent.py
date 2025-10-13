@@ -47,6 +47,10 @@ def handle_question(question: str):
         elif intent == "abandoned_carts":
             data = customer_insights.get_abandoned_carts(params.get("hours_threshold", 48))
             context = "abandoned cart analysis - unpaid orders"
+
+        elif intent == "unpaid_orders_count":
+            data = customer_insights.get_unpaid_orders_count(params.get("period_days", 30))
+            context = "total unpaid orders count and value"
         
         elif intent == "trending_topics":
             data = topic_analysis.get_trending_topics(
@@ -58,6 +62,12 @@ def handle_question(question: str):
         elif intent == "topic_revenue":
             data = topic_analysis.get_topic_revenue_correlation(params.get("period_days", 30))
             context = "topic revenue correlation"
+
+        elif intent == "topics_by_emotion":
+            emotion_filter = params.get("emotion_filter")
+            data = topic_analysis.get_topics_by_emotion(emotion_filter, params.get("period_days", 30))
+            emotion_text = f" from {emotion_filter} customers" if emotion_filter else ""
+            context = f"topics{emotion_text} and their revenue performance"
         
         elif intent == "emotions":
             data = emotional_insights.get_emotion_distribution(params.get("period_days", 30))
