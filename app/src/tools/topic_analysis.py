@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
 from src.db.mongo import ai_insight
 from collections import Counter
+from src.utils.date import get_utc_date_range_for_local_period
 
 def get_trending_topics(period_days=7, limit=10):
     """Get trending topics in specified period"""
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$unwind": "$topics"},
@@ -17,7 +18,7 @@ def get_trending_topics(period_days=7, limit=10):
 
 def get_topic_revenue_correlation(period_days=30):
     """Show which topics generate most revenue"""
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     pipeline = [
         {"$match": {
             "reference_date": {"$gte": since},
@@ -68,7 +69,7 @@ def get_topics_by_emotion(emotion_filter=None, period_days=30):
 
 def get_question_patterns(period_days=30):
     """Analyze common question themes"""
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     docs = ai_insight.find(
         {"reference_date": {"$gte": since}},
         {"questions": 1, "topics": 1}

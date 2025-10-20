@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
 from src.db.mongo import ai_insight
+from src.utils.date import get_utc_date_range_for_local_period, get_local_date_projection
 
 def get_payment_success_rate(period_days=30):
     """Calculate payment completion rates"""
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$group": {
@@ -40,7 +41,7 @@ def get_payment_success_rate(period_days=30):
 
 def get_revenue_trends(period_days=30, group_by="day"):
     """Revenue trends over time"""
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     
     date_format = {
         "day": "%Y-%m-%d",
@@ -50,11 +51,12 @@ def get_revenue_trends(period_days=30, group_by="day"):
     
     pipeline = [
         {"$match": {
-            "reference_date": {"$gte": since},
-            "payment_status": 1  # Only paid orders
+            "reference_date": {"$gte": since}, 
+            "payment_status": 1
         }},
+        get_local_date_projection("reference_date"),
         {"$group": {
-            "_id": {"$dateToString": {"format": date_format, "date": "$reference_date"}},
+            "_id": {"$dateToString": {"format": date_format, "date": "$local_date"}},
             "revenue": {"$sum": "$total_price"},
             "orders": {"$sum": 1},
             "avg_order_value": {"$avg": "$total_price"}
@@ -66,7 +68,7 @@ def get_revenue_trends(period_days=30, group_by="day"):
 
 def get_product_performance(period_days=30):
     """Best performing products"""
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     pipeline = [
         {"$match": {
             "reference_date": {"$gte": since},

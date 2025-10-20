@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
 from src.db.mongo import ai_insight
-from typing import Dict, List, Any
+from src.utils.date import get_utc_date_range_for_local_period
 
 def get_customer_segments(period_days=30):
     """Segment customers by value and behavior"""
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$group": {
@@ -53,7 +53,7 @@ def get_customer_lifetime_value(customer_id=None, top_n=20):
 
 def get_repeat_customers(period_days=30):
     """Identify loyal vs one-time customers"""
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}, "customer_id": {"$ne": None}}},
         {"$group": {
@@ -81,7 +81,7 @@ def get_repeat_customers(period_days=30):
 
 def get_payment_time_analysis(period_days=30):
     """Analyze time between order creation and payment"""
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     pipeline = [
         {"$match": {
             "created_at": {"$gte": since},
@@ -145,7 +145,7 @@ def get_payment_time_analysis(period_days=30):
 
 def get_fast_vs_slow_payers(period_days=30, threshold_hours=24):
     """Segment customers by payment speed"""
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     
     # First, let's check how many total paid orders we have
     total_paid = ai_insight.count_documents({
@@ -250,7 +250,7 @@ def get_fast_vs_slow_payers(period_days=30, threshold_hours=24):
 
 def get_abandoned_carts(hours_threshold=48):
     """Find unpaid orders older than threshold (potential abandoned carts)"""
-    cutoff = datetime.utcnow() - timedelta(hours=hours_threshold)
+    cutoff = datetime.now() - timedelta(hours=hours_threshold)
     pipeline = [
         {"$match": {
             "payment_status": 0,
@@ -295,7 +295,7 @@ def get_abandoned_carts(hours_threshold=48):
 
 def get_unpaid_orders_count(period_days=30):
     """Count all unpaid orders in a period"""
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     
     pipeline = [
         {"$match": {
@@ -328,11 +328,12 @@ def get_unpaid_orders_count(period_days=30):
         "period_days": period_days
     }
 
+
 def get_purchases_by_age_group(period_days=30):
     """Analyze purchases by customer age groups"""
     from datetime import datetime, timedelta
     
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     current_year = datetime.now().year
     
     pipeline = [

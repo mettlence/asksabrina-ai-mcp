@@ -186,8 +186,8 @@ class IntentDetector:
         else:
             # Special handling for "today" - current calendar day
             if "today" in question_lower or "today's" in question_lower:
-                start_of_day = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-                hours_since_start = (datetime.utcnow() - start_of_day).total_seconds() / 3600
+                start_of_day = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                hours_since_start = (datetime.now() - start_of_day).total_seconds() / 3600
                 params["period_days"] = max(hours_since_start / 24, 0.1)
             
             # Special handling for "yesterday"
@@ -201,8 +201,8 @@ class IntentDetector:
             
             # Special handling for "this year"
             elif "this year" in question_lower:
-                start_of_year = datetime(datetime.utcnow().year, 1, 1)
-                days_since_start = (datetime.utcnow() - start_of_year).days + 1
+                start_of_year = datetime(datetime.now().year, 1, 1)
+                days_since_start = (datetime.now() - start_of_year).days + 1
                 params["period_days"] = days_since_start
             
             # Handle "last year" or "1 year"
