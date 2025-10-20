@@ -20,7 +20,8 @@ class IntentDetector:
         ],
         "abandoned_carts": [
             "abandoned", "cart abandon", "didn't pay", 
-            "incomplete order", "not paid", "pending payment", "waiting payment"
+            "incomplete order", "not paid", "pending payment", "waiting payment",
+            "which customer abandoned", "who abandoned"
         ],
         "unpaid_orders_count": ["how many unpaid", "unpaid orders", "count unpaid", "total unpaid"],
         
@@ -40,50 +41,81 @@ class IntentDetector:
         "emotion_conversion": ["emotion conversion", "which emotion convert", "emotional impact", "emotion payment"],
         "high_risk": ["risk", "distress", "negative", "support", "worried customer", "need help"],
         
-        # Revenue Analytics - ENHANCED
-        "payment_rate": ["payment rate", "success rate", "conversion rate", "completion rate", "how many paid"],
+        # Revenue Analytics - ENRICHED
         "revenue_trends": [
-            "revenue trend", "sales over time", "daily revenue", "monthly revenue", "revenue growth",
-            "all revenue", "total revenue", "total sales", "how much money", "total income",
-            "revenue this", "revenue last", "sales this", "sales last", "money made"
+            # Revenue keywords
+            "revenue", "sales", "income", "earnings", "money made", "total sales",
+            # Performance keywords  
+            "performance", "results", "metrics", "numbers", "statistics",
+            # Trend keywords
+            "trend", "over time", "growth", "daily", "weekly", "monthly"
         ],
+        "payment_rate": ["payment rate", "success rate", "conversion rate", "completion rate", "how many paid"],
         "product_performance": ["product performance", "best product", "top selling", "product revenue", "best seller"],
         
         # Customer Needs Analytics
         "customer_needs": ["need", "looking for", "customer want", "seeking", "what do they need"],
         "unmet_needs": ["gap", "unmet need", "unfulfilled", "missing service", "not satisfied"],
         
-        # Sentiment Analytics - ENHANCED & SEPARATED
+        # Sentiment Analytics
         "sentiment_overview": [
             "overall sentiment", "customer sentiment", "sentiment distribution",
             "are customers happy", "customer feedback", "satisfaction score",
             "happy or sad", "positive or negative"
         ],
         "sentiment_product": ["sentiment by product", "product sentiment", "which product happy"],
-        "keywords": ["keyword", "common word", "popular term", "frequently mentioned", "top word"]
+        "keywords": ["keyword", "common word", "popular term", "frequently mentioned", "top word"],
+
+        # Age Analytics
+        "purchases_by_age": [
+            "age group", "age groups", "which age", "what age", 
+            "by age", "age bracket", "age range", "age demographics",
+            "oldest customer", "youngest customer", "age purchase"
+        ],
+    }
+    
+    # Semantic keyword groups for better matching
+    SEMANTIC_GROUPS = {
+        "revenue_related": ["revenue", "sales", "income", "earnings", "money", "profit", "performance", "results"],
+        "time_related": ["today", "yesterday", "this week", "last week", "this month", "last month"],
+        "customer_related": ["customer", "client", "buyer", "user"],
+        "order_related": ["order", "purchase", "transaction", "sale"],
+        "age_related": ["age", "age group", "old", "young", "generation"]
     }
     
     def detect(self, question: str) -> Tuple[str, float]:
         """
-        Detect intent from question
+        Detect intent from question with semantic understanding
         Returns: (intent_name, confidence_score)
         """
         question_lower = question.lower()
         
-        # Check for emotion-specific patterns first (higher priority)
+        # Priority 1: Check for emotion-specific topic queries
         emotion_words = ["anxious", "happy", "sad", "stressed", "worried", "confused", "hopeful", "angry", "calm"]
         has_emotion = any(emotion in question_lower for emotion in emotion_words)
         
         if has_emotion and any(word in question_lower for word in ["topic", "topics"]):
             return "topics_by_emotion", 0.95
         
-        # Exact match - highest confidence
+        # Priority 2: Semantic matching for common queries
+        # Check if asking about revenue/sales/performance with time period
+        has_revenue_keyword = any(kw in question_lower for kw in self.SEMANTIC_GROUPS["revenue_related"])
+        has_time_keyword = any(kw in question_lower for kw in self.SEMANTIC_GROUPS["time_related"])
+        
+        if has_revenue_keyword and has_time_keyword:
+            return "revenue_trends", 0.90
+        
+        # If just revenue/performance without time, still route to revenue_trends
+        if has_revenue_keyword:
+            return "revenue_trends", 0.85
+        
+        # Priority 3: Exact pattern matching
         for intent, patterns in self.INTENT_PATTERNS.items():
             for pattern in patterns:
                 if pattern in question_lower:
                     return intent, 0.95
         
-        # Fuzzy matching for partial matches
+        # Priority 4: Fuzzy matching
         best_match = None
         best_score = 0
         
@@ -93,7 +125,7 @@ class IntentDetector:
                 matches = sum(1 for word in words if word in question_lower)
                 score = matches / len(words)
                 
-                if score > best_score and score >= 0.6:  # 60% word match
+                if score > best_score and score >= 0.6:
                     best_score = score
                     best_match = intent
         
@@ -105,7 +137,7 @@ class IntentDetector:
     def extract_parameters(self, question: str) -> Dict:
         """Extract parameters like time period, limits, thresholds from question"""
         import re
-        from datetime import datetime
+        from datetime import datetime, timedelta
         params = {}
         question_lower = question.lower()
         
@@ -129,7 +161,7 @@ class IntentDetector:
         if detected_emotions:
             params["emotion_filter"] = detected_emotions if len(detected_emotions) > 1 else detected_emotions[0]
         
-        # Dynamic time period extraction (e.g., "last 20 days", "past 3 months")
+        # Dynamic time period extraction
         time_unit_multipliers = {
             "day": 1,
             "days": 1,
@@ -152,22 +184,34 @@ class IntentDetector:
             unit = match.group(2)
             params["period_days"] = number * time_unit_multipliers.get(unit, 1)
         else:
+            # Special handling for "today" - current calendar day
+            if "today" in question_lower or "today's" in question_lower:
+                start_of_day = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+                hours_since_start = (datetime.utcnow() - start_of_day).total_seconds() / 3600
+                params["period_days"] = max(hours_since_start / 24, 0.1)
+            
+            # Special handling for "yesterday"
+            elif "yesterday" in question_lower or "yesterday's" in question_lower:
+                params["period_days"] = 1
+                params["specific_date"] = "yesterday"
+            
             # Special handling for "lifetime" or "all time"
-            if any(phrase in question_lower for phrase in ["lifetime", "all time", "ever", "since beginning", "total history"]):
-                params["period_days"] = 99999  # Very large number to capture all data
-            # Special handling for "this year" - calculate days from Jan 1 to now
+            elif any(phrase in question_lower for phrase in ["lifetime", "all time", "ever", "since beginning", "total history"]):
+                params["period_days"] = 99999
+            
+            # Special handling for "this year"
             elif "this year" in question_lower:
                 start_of_year = datetime(datetime.utcnow().year, 1, 1)
                 days_since_start = (datetime.utcnow() - start_of_year).days + 1
                 params["period_days"] = days_since_start
+            
             # Handle "last year" or "1 year"
             elif any(phrase in question_lower for phrase in ["last year", "past year", "in 1 year"]):
                 params["period_days"] = 365
+            
             # Fallback to static patterns
             else:
                 time_patterns = {
-                    "today": 1,
-                    "yesterday": 1,
                     "this week": 7,
                     "last week": 7,
                     "this month": 30,
@@ -189,15 +233,12 @@ class IntentDetector:
             params["limit"] = int(limit_match.group(1))
         
         # Extract time thresholds - support hours, minutes, seconds
-        # Hours pattern
         hour_pattern = r'(\d+)\s+(?:hour|hours|hrs?)\s+threshold'
         hour_match = re.search(hour_pattern, question_lower)
         
-        # Minutes pattern
         minute_pattern = r'(\d+)\s+(?:minute|minutes|mins?)\s+threshold'
         minute_match = re.search(minute_pattern, question_lower)
         
-        # Seconds pattern  
         second_pattern = r'(\d+)\s+(?:second|seconds|secs?)\s+threshold'
         second_match = re.search(second_pattern, question_lower)
         

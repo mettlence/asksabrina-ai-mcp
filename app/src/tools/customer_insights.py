@@ -327,3 +327,81 @@ def get_unpaid_orders_count(period_days=30):
         "avg_order_value": round(data.get("avg_order_value", 0), 2),
         "period_days": period_days
     }
+
+def get_purchases_by_age_group(period_days=30):
+    """Analyze purchases by customer age groups"""
+    from datetime import datetime, timedelta
+    
+    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    current_year = datetime.now().year
+    
+    pipeline = [
+        {"$match": {
+            "created_at": {"$gte": since},
+            "payment_status": 1,
+            "customer_info.birthday": {"$exists": True, "$ne": None}
+        }},
+        {"$addFields": {
+            # Calculate age from birthday
+            "birth_year": {
+                "$year": {
+                    "$cond": [
+                        {"$eq": [{"$type": "$customer_info.birthday"}, "date"]},
+                        "$customer_info.birthday",
+                        {"$dateFromString": {"dateString": "$customer_info.birthday"}}
+                    ]
+                }
+            }
+        }},
+        {"$addFields": {
+            "age": {"$subtract": [current_year, "$birth_year"]},
+        }},
+        # Filter valid ages (18-100)
+        {"$match": {"age": {"$gte": 18, "$lte": 100}}},
+        {"$addFields": {
+            "age_group": {
+                "$switch": {
+                    "branches": [
+                        {"case": {"$lt": ["$age", 25]}, "then": "18-24"},
+                        {"case": {"$lt": ["$age", 35]}, "then": "25-34"},
+                        {"case": {"$lt": ["$age", 45]}, "then": "35-44"},
+                        {"case": {"$lt": ["$age", 55]}, "then": "45-54"},
+                        {"case": {"$lt": ["$age", 65]}, "then": "55-64"}
+                    ],
+                    "default": "65+"
+                }
+            }
+        }},
+        {"$group": {
+            "_id": "$age_group",
+            "total_purchases": {"$sum": 1},
+            "total_revenue": {"$sum": "$total_price"},
+            "avg_order_value": {"$avg": "$total_price"},
+            "unique_customers": {"$addToSet": "$customer_id"}
+        }},
+        {"$addFields": {
+            "customer_count": {"$size": "$unique_customers"}
+        }},
+        {"$project": {
+            "unique_customers": 0  # Remove the array from output
+        }},
+        {"$sort": {"total_purchases": -1}}
+    ]
+    
+    results = list(ai_insight.aggregate(pipeline))
+    
+    # Calculate totals
+    total_purchases = sum(r["total_purchases"] for r in results)
+    total_revenue = sum(r["total_revenue"] for r in results)
+    
+    # Add percentage
+    for r in results:
+        r["purchase_percentage"] = round((r["total_purchases"] / total_purchases * 100), 2) if total_purchases > 0 else 0
+        r["revenue_percentage"] = round((r["total_revenue"] / total_revenue * 100), 2) if total_revenue > 0 else 0
+    
+    return {
+        "age_groups": results,
+        "total_purchases": total_purchases,
+        "total_revenue": total_revenue,
+        "period_days": period_days
+    }
