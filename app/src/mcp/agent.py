@@ -32,6 +32,10 @@ def handle_question(question: str):
         elif intent == "repeat_customers":
             data = customer_insights.get_repeat_customers(params.get("period_days", 30))
             context = "repeat vs one-time customer analysis"
+
+        elif intent == "purchases_by_age":
+            data = customer_insights.get_purchases_by_age_group(params.get("period_days", 30))
+            context = "purchases and revenue breakdown by customer age groups"
         
         elif intent == "payment_time":
             data = customer_insights.get_payment_time_analysis(params.get("period_days", 30))
