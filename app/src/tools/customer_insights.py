@@ -10,8 +10,8 @@ def get_customer_segments(period_days=30):
         {"$group": {
             "_id": "$customer_id",
             "total_orders": {"$sum": 1},
-            "total_spent": {"$sum": "$total_price"},
-            "avg_order_value": {"$avg": "$total_price"},
+            "total_spent": {"$sum": "$clickbank_amount"},
+            "avg_order_value": {"$avg": "$clickbank_amount"},
             "completed_orders": {
                 "$sum": {"$cond": [{"$eq": ["$payment_status", 1]}, 1, 0]}
             }
@@ -40,8 +40,8 @@ def get_customer_lifetime_value(customer_id=None, top_n=20):
         {"$group": {
             "_id": "$customer_id",
             "total_orders": {"$sum": 1},
-            "total_revenue": {"$sum": "$total_price"},
-            "avg_order_value": {"$avg": "$total_price"},
+            "total_revenue": {"$sum": "$clickbank_amount"},
+            "avg_order_value": {"$avg": "$clickbank_amount"},
             "first_order": {"$min": "$created_at"},
             "last_order": {"$max": "$created_at"}
         }},
@@ -192,7 +192,7 @@ def get_fast_vs_slow_payers(period_days=30, threshold_hours=24):
             "avg_payment_time_hours": {"$avg": "$payment_duration_hours"},
             "min_payment_time_hours": {"$min": "$payment_duration_hours"},
             "max_payment_time_hours": {"$max": "$payment_duration_hours"},
-            "total_revenue": {"$sum": "$total_price"}
+            "total_revenue": {"$sum": "$clickbank_amount"}
         }},
         {"$sort": {"_id": 1}}
     ]
@@ -259,7 +259,7 @@ def get_abandoned_carts(hours_threshold=48):
         {"$group": {
             "_id": "$customer_id",
             "abandoned_orders": {"$sum": 1},
-            "total_abandoned_value": {"$sum": "$total_price"},
+            "total_abandoned_value": {"$sum": "$clickbank_amount"},
             "order_ids": {"$push": "$order_id"},
             "topics": {"$push": "$topics"},
             "emotions": {"$push": "$emotional_tone"},
@@ -305,8 +305,8 @@ def get_unpaid_orders_count(period_days=30):
         {"$group": {
             "_id": None,
             "total_unpaid": {"$sum": 1},
-            "total_value": {"$sum": "$total_price"},
-            "avg_order_value": {"$avg": "$total_price"}
+            "total_value": {"$sum": "$clickbank_amount"},
+            "avg_order_value": {"$avg": "$clickbank_amount"}
         }}
     ]
     
@@ -376,8 +376,8 @@ def get_purchases_by_age_group(period_days=30):
         {"$group": {
             "_id": "$age_group",
             "total_purchases": {"$sum": 1},
-            "total_revenue": {"$sum": "$total_price"},
-            "avg_order_value": {"$avg": "$total_price"},
+            "total_revenue": {"$sum": "$clickbank_amount"},
+            "avg_order_value": {"$avg": "$clickbank_amount"},
             "unique_customers": {"$addToSet": "$customer_id"}
         }},
         {"$addFields": {

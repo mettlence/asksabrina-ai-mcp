@@ -27,9 +27,9 @@ def get_topic_revenue_correlation(period_days=30):
         {"$unwind": "$topics"},
         {"$group": {
             "_id": "$topics",
-            "total_revenue": {"$sum": "$total_price"},
+            "total_revenue": {"$sum": "$clickbank_amount"},
             "order_count": {"$sum": 1},
-            "avg_order_value": {"$avg": "$total_price"}
+            "avg_order_value": {"$avg": "$clickbank_amount"}
         }},
         {"$sort": {"total_revenue": -1}}
     ]
@@ -56,9 +56,9 @@ def get_topics_by_emotion(emotion_filter=None, period_days=30):
         {"$unwind": "$topics"},
         {"$group": {
             "_id": "$topics",
-            "total_revenue": {"$sum": "$total_price"},
+            "total_revenue": {"$sum": "$clickbank_amount"},
             "order_count": {"$sum": 1},
-            "avg_order_value": {"$avg": "$total_price"},
+            "avg_order_value": {"$avg": "$clickbank_amount"},
             "emotions": {"$addToSet": "$emotional_tone"}
         }},
         {"$sort": {"total_revenue": -1}},

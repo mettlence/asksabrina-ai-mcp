@@ -10,7 +10,7 @@ def get_payment_success_rate(period_days=30):
         {"$group": {
             "_id": "$payment_status",
             "count": {"$sum": 1},
-            "total_value": {"$sum": "$total_price"}
+            "total_value": {"$sum": "$clickbank_amount"}
         }}
     ]
     results = list(ai_insight.aggregate(pipeline))
@@ -57,9 +57,9 @@ def get_revenue_trends(period_days=30, group_by="day"):
         get_local_date_projection("reference_date"),
         {"$group": {
             "_id": {"$dateToString": {"format": date_format, "date": "$local_date"}},
-            "revenue": {"$sum": "$total_price"},
+            "revenue": {"$sum": "$clickbank_amount"},
             "orders": {"$sum": 1},
-            "avg_order_value": {"$avg": "$total_price"}
+            "avg_order_value": {"$avg": "$clickbank_amount"}
         }},
         {"$sort": {"_id": 1}}
     ]
@@ -76,9 +76,9 @@ def get_product_performance(period_days=30):
         }},
         {"$group": {
             "_id": "$product_id",
-            "total_revenue": {"$sum": "$total_price"},
+            "total_revenue": {"$sum": "$clickbank_amount"},
             "order_count": {"$sum": 1},
-            "avg_price": {"$avg": "$total_price"}
+            "avg_price": {"$avg": "$clickbank_amount"}
         }},
         {"$sort": {"total_revenue": -1}},
         {"$limit": 10}
