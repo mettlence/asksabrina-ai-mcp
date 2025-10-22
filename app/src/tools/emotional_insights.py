@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
 from src.db.mongo import ai_insight
-from collections import Counter
+from src.utils.date import get_utc_date_range_for_local_period
 
 def get_emotion_distribution(period_days=30):
     """Get breakdown of customer emotions"""
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$unwind": "$emotional_tone"},
@@ -16,7 +16,7 @@ def get_emotion_distribution(period_days=30):
 
 def get_emotion_conversion_rate(period_days=30):
     """Correlate emotions with payment completion"""
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$unwind": "$emotional_tone"},

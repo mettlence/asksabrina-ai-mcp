@@ -72,6 +72,28 @@ class IntentDetector:
             "by age", "age bracket", "age range", "age demographics",
             "oldest customer", "youngest customer", "age purchase"
         ],
+
+        # Country Analytics
+        "revenue_by_country": [
+            "country revenue", "revenue country", "by country", "per country"
+        ],
+        "top_countries_sales": [
+            "top countries", "best countries", "countries sales", 
+            "which country", "what country", "countries by"
+        ],
+        "country_performance": [
+            "country performance", "country comparison", "country metrics"
+        ],
+        "country_growth": [
+            "country growth", "country trend", "country over time"
+        ],
+        "country_ltv": [
+            "country lifetime", "country ltv", "country customer value"
+        ],
+        "country_summary": [
+            "country distribution", "country overview", "country summary",
+            "all countries", "geographic"
+        ],
     }
     
     # Semantic keyword groups for better matching
@@ -97,7 +119,25 @@ class IntentDetector:
         if has_emotion and any(word in question_lower for word in ["topic", "topics"]):
             return "topics_by_emotion", 0.95
         
-        # Priority 2: Semantic matching for common queries
+        # Priority 2: Country-related queries
+        if "countr" in question_lower:  # Matches "country" or "countries"
+            if any(word in question_lower for word in ["sales", "most", "top", "best", "which"]):
+                return "top_countries_sales", 0.90
+            elif any(word in question_lower for word in ["revenue", "money", "income", "earn"]):
+                return "revenue_by_country", 0.90
+            elif any(word in question_lower for word in ["growth", "growing", "trend"]):
+                return "country_growth", 0.90
+            elif any(word in question_lower for word in ["ltv", "lifetime", "valuable"]):
+                return "country_ltv", 0.90
+            elif any(word in question_lower for word in ["performance", "comparison", "compare"]):
+                return "country_performance", 0.90
+            elif any(word in question_lower for word in ["distribution", "summary", "overview", "all"]):
+                return "country_summary", 0.90
+            else:
+                # Default country query
+                return "top_countries_sales", 0.85
+        
+        # Priority 3: Semantic matching for common queries
         # Check if asking about revenue/sales/performance with time period
         has_revenue_keyword = any(kw in question_lower for kw in self.SEMANTIC_GROUPS["revenue_related"])
         has_time_keyword = any(kw in question_lower for kw in self.SEMANTIC_GROUPS["time_related"])
@@ -109,13 +149,13 @@ class IntentDetector:
         if has_revenue_keyword:
             return "revenue_trends", 0.85
         
-        # Priority 3: Exact pattern matching
+        # Priority 4: Exact pattern matching
         for intent, patterns in self.INTENT_PATTERNS.items():
             for pattern in patterns:
                 if pattern in question_lower:
                     return intent, 0.95
         
-        # Priority 4: Fuzzy matching
+        # Priority 5: Fuzzy matching
         best_match = None
         best_score = 0
         
@@ -186,8 +226,8 @@ class IntentDetector:
         else:
             # Special handling for "today" - current calendar day
             if "today" in question_lower or "today's" in question_lower:
-                start_of_day = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-                hours_since_start = (datetime.utcnow() - start_of_day).total_seconds() / 3600
+                start_of_day = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                hours_since_start = (datetime.now() - start_of_day).total_seconds() / 3600
                 params["period_days"] = max(hours_since_start / 24, 0.1)
             
             # Special handling for "yesterday"
@@ -201,8 +241,8 @@ class IntentDetector:
             
             # Special handling for "this year"
             elif "this year" in question_lower:
-                start_of_year = datetime(datetime.utcnow().year, 1, 1)
-                days_since_start = (datetime.utcnow() - start_of_year).days + 1
+                start_of_year = datetime(datetime.now().year, 1, 1)
+                days_since_start = (datetime.now() - start_of_year).days + 1
                 params["period_days"] = days_since_start
             
             # Handle "last year" or "1 year"

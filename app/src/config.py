@@ -14,8 +14,11 @@ class Settings(BaseSettings):
 
     LOG_LEVEL: str = "info"
 
+    # Timezone
+    TIMEZONE_OFFSET_HOURS: int = 8  # Jakarta/Singapore UTC+8
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "allow"
 
 settings = Settings()

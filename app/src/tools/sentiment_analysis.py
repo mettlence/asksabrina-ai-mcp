@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
 from src.db.mongo import ai_insight
+from src.utils.date import get_utc_date_range_for_local_period
 
 def get_sentiment_distribution(period_days=30):
     """Overall sentiment breakdown"""
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$group": {
@@ -18,7 +19,7 @@ def get_sentiment_distribution(period_days=30):
 
 def get_sentiment_by_product(period_days=30):
     """Sentiment analysis per product"""
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$group": {
@@ -35,7 +36,7 @@ def get_sentiment_by_product(period_days=30):
 
 def get_keyword_frequency(period_days=30, limit=20):
     """Most mentioned keywords"""
-    since = (datetime.now() - timedelta(days=period_days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = get_utc_date_range_for_local_period(period_days)
     pipeline = [
         {"$match": {"reference_date": {"$gte": since}}},
         {"$unwind": "$keywords"},

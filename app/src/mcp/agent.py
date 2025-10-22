@@ -1,6 +1,7 @@
 from src.tools import customer_insights, topic_analysis
 from src.tools import emotional_insights, revenue_metrics, customer_needs
 from src.tools import sentiment_analysis
+from src.tools import country_analytics
 from src.services.analyzer import summarize_data
 from src.services.intent_detector import IntentDetector
 
@@ -113,6 +114,31 @@ def handle_question(question: str):
         elif intent == "sentiment_overview":
             data = sentiment_analysis.get_sentiment_distribution(params.get("period_days", 30))
             context = "sentiment distribution overview"
+
+        # Country Analytics
+        elif intent == "revenue_by_country":
+            data = country_analytics.get_revenue_by_country(params.get("period_days", 30), params.get("limit", 20))
+            context = "revenue breakdown by customer country"
+
+        elif intent == "top_countries_sales":
+            data = country_analytics.get_top_countries_by_sales(params.get("period_days", 30), params.get("limit", 10))
+            context = "top countries ranked by number of sales"
+
+        elif intent == "country_performance":
+            data = country_analytics.get_country_performance_comparison(params.get("period_days", 30))
+            context = "country performance comparison with conversion rates"
+
+        elif intent == "country_growth":
+            data = country_analytics.get_country_growth_trends(params.get("period_days", 30), params.get("period_days", 30))
+            context = "country growth trends comparing current vs previous period"
+
+        elif intent == "country_ltv":
+            data = country_analytics.get_country_customer_lifetime_value(params.get("period_days", 30), params.get("limit", 20))
+            context = "average customer lifetime value by country"
+
+        elif intent == "country_summary":
+            data = country_analytics.get_country_distribution_summary(params.get("period_days", 30))
+            context = "overall geographic distribution summary"
         
         elif intent == "keywords":
             data = sentiment_analysis.get_keyword_frequency(
