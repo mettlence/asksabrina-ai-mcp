@@ -12,7 +12,7 @@ echo -e "${GREEN}🚀 Starting deployment...${NC}"
 
 # Configuration
 APP_DIR="/opt/asksabrina-ai-mcp"
-COMPOSE_FILE="docker-compose.prod.yml"
+COMPOSE_FILE="docker-compose.prod.v1.yml"
 BACKUP_DIR="$APP_DIR/backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 CERTBOT_DIR="$APP_DIR/certbot"
