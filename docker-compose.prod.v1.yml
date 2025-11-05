@@ -137,8 +137,8 @@ services:
         max-file: "3"
     # SECURITY: Do NOT expose port 27017 to host in production
     # Only app container can access MongoDB through internal network
-    # ports:
-    #   - "27017:27017"  # Only uncomment for local development
+    ports:
+      - "27017:27017"  # Only uncomment for local development
 
 networks:
   app_network:
