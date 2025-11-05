@@ -2,8 +2,9 @@ from pymongo import MongoClient
 from src.config import settings
 import certifi
 
-client = MongoClient(settings.MONGODB_URI, tlsCAFile=certifi.where())
-db = client["development"]
+# client = MongoClient(settings.MONGODB_URI, tlsCAFile=certifi.where())
+client = MongoClient(settings.MONGODB_URI)
+db = client["asksabrina"]
 ai_insight = db["ai_insight"]
 
 # Test connection
