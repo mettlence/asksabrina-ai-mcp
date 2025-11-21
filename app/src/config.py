@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     MONGODB_URI: str
-    MONGODB_DB_NAME: str = "development"
+    MONGODB_DB_NAME: str = "asksabrina"
 
     OPENAI_API_KEY: str
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
