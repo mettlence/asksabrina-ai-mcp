@@ -1,26 +1,57 @@
+from typing import List, Dict, Any, Tuple, Optional
 from src.tools import customer_insights, topic_analysis
 from src.tools import emotional_insights, revenue_metrics, customer_needs
 from src.tools import sentiment_analysis
 from src.tools import country_analytics
 from src.services.analyzer import summarize_data
-from src.services.intent_detector import IntentDetector
+from src.services.hybrid_intent_detector import HybridIntentDetector
+from src.models.conversation import Message
+from src.mcp.multi_step_agent import MultiStepAgent
+from src.mcp.agentic_handler import AgenticHandler
 
-intent_detector = IntentDetector()
+intent_detector = HybridIntentDetector()
+multi_step_agent = MultiStepAgent()
+agentic_handler = AgenticHandler()
 
-def handle_question(question: str):
-    """Main handler for marketing analytics questions"""
+def handle_question(question: str, history: Optional[List[Message]] = None, use_agentic: bool = False) -> Tuple[str, Dict[str, Any]]:
+    """Main handler for marketing analytics questions with conversation context"""
     
-    # Detect intent
-    intent, confidence = intent_detector.detect(question)
-    params = intent_detector.extract_parameters(question)
+    # Agentic mode if enabled
+    if use_agentic:
+        return agentic_handler.handle_question_agentic(question, history)
     
+    # Extract context from conversation history
+    context_info = _extract_conversation_context(history) if history else {}
+
+    # Check multi step query
+    if multi_step_agent.detect_multi_step_query(question):
+        # Extract params from question
+        default_params = intent_detector.extract_parameters(question, context_info)
+        
+        # Try multi-step execution
+        answer, metadata = multi_step_agent.handle_complex_query(question, default_params)
+        
+        if answer:  # Multi-step succeeded
+            return answer, metadata
+        # If failed, fall through to single-step
+    
+    # Detect intent with hybrid approach
+    intent, confidence, detection_method = intent_detector.detect(question, context_info)
+    params = intent_detector.extract_parameters(question, context_info)
+    
+    # If low confidence, try agentic as fallback
     if confidence < 0.5:
-        return "I'm not sure what you're asking. Try questions like: 'Show me trending topics' or 'What are the top emotions this month?'"
+        print("⚠️ Low confidence, trying agentic fallback...")
+        return agentic_handler.handle_question_agentic(question, history)
     
     # Route to appropriate tool
     try:
         data = None
         context = ""
+
+        if intent == "context_followup" and context_info.get("last_intent"):
+            intent = context_info["last_intent"]
+            params = {**context_info.get("last_params", {}), **params}
         
         if intent == "customer_segments":
             data = customer_insights.get_customer_segments(params.get("period_days", 30))
@@ -148,9 +179,92 @@ def handle_question(question: str):
             context = "keyword frequency analysis"
         
         if data is not None:
-            return summarize_data(data, context, question)
+            answer = summarize_data(data, context, question, history)
+            
+            # Return answer with metadata
+            metadata = {
+                "intent": intent,
+                "params": params,
+                "confidence": confidence,
+                "detection_method": detection_method,
+                "data_type": context,
+                "data_summary": _summarize_data_for_context(data)
+            }
+            return answer, metadata
         
-        return "I couldn't process that query. Please try rephrasing."
+        return (
+            "I couldn't process that query. Please try rephrasing.",
+            {
+                "intent": intent, 
+                "confidence": confidence,
+                "detection_method": detection_method
+            }
+        )
     
     except Exception as e:
-        return f"Error processing query: {str(e)}"
+        return (
+            f"Error processing query: {str(e)}",
+            {"intent": intent, "error": str(e)}
+        )
+    
+def _extract_conversation_context(history: List[Message]) -> Dict[str, Any]:
+    """Extract rich context from conversation history"""
+    if not history:
+        return {}
+    
+    # Get last assistant response with metadata
+    last_assistant = next(
+        (m for m in reversed(history) if m.role == "assistant"),
+        None
+    )
+    
+    context = {}
+    if last_assistant and last_assistant.metadata:
+        context["last_intent"] = last_assistant.metadata.get("intent")
+        context["last_params"] = last_assistant.metadata.get("params", {})
+        context["last_data_type"] = last_assistant.metadata.get("data_type")
+        context["last_data_summary"] = last_assistant.metadata.get("data_summary")
+        context["last_confidence"] = last_assistant.metadata.get("confidence", 0)
+    
+    # Get last few user questions for pattern detection
+    recent_questions = [
+        m.content for m in reversed(history) 
+        if m.role == "user"
+    ][:3]
+    context["recent_questions"] = recent_questions
+    
+    # Detect conversation patterns
+    context["conversation_length"] = len([m for m in history if m.role == "user"])
+    
+    # Check if user is refining/drilling down
+    if len(recent_questions) >= 2:
+        current = recent_questions[0].lower()
+        previous = recent_questions[1].lower()
+        
+        # Detect refinement patterns
+        if any(word in current for word in ["what about", "how about", "also", "and"]):
+            context["is_refinement"] = True
+        
+        # Detect comparison patterns
+        if any(word in current for word in ["compare", "vs", "versus", "difference"]):
+            context["is_comparison"] = True
+    
+    return context
+
+
+def _summarize_data_for_context(data: Any) -> Dict[str, Any]:
+    """Create lightweight summary of data for context storage"""
+    if isinstance(data, dict):
+        return {
+            "type": "dict",
+            "keys": list(data.keys())[:5],  # First 5 keys
+            "size": len(data)
+        }
+    elif isinstance(data, list):
+        return {
+            "type": "list",
+            "length": len(data),
+            "sample": data[0] if data else None
+        }
+    else:
+        return {"type": str(type(data))}
